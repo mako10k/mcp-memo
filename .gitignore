@@ -3,4 +3,5 @@ node_modules/
 bun.lockb
 bun.lock
 .env
+.dev.vars
 logs/
