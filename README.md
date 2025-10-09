@@ -35,6 +35,18 @@ Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索�
    ```
    `wrangler dev` が起動し、MCP ツール呼び出しを受け付けます。
 
+### CI（自動テスト）
+- GitHub Actions ワークフロー `.github/workflows/ci.yml` が push / pull request 時に自動実行されます。
+- 処理内容は Bun のセットアップ、依存解決、`bun test` の実行です。
+- ローカルで確認する場合は `bun install && bun test` を実行してください。
+
+### デプロイ
+- Cloudflare Workers への本番デプロイは `wrangler deploy` を利用します。
+- GitHub Actions 経由でのデプロイは手動トリガーワークフロー `wrangler-deploy.yml` を使用します。
+  - 必要な GitHub Secrets：`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_EMBEDDING_MODEL`（必要に応じて）。
+  - Actions 画面から「Run workflow」を押すと、`wrangler deploy` が実行されます。
+- 詳細な手順は `docs/deployment.md` を参照してください。
+
 ## ユニットテスト
 Bun の組み込みテストランナーを利用しています。
 ```bash
@@ -81,3 +93,8 @@ bun test
 - Drizzle ORM / マイグレーション自動化。
 - OpenAI Embeddings フェイルオーバー対応。
 - E2E テスト（Workers 上）と実 DB を用いた統合テスト。
+
+## 参考ドキュメント
+- `docs/deployment.md`：GitHub Actions を使った自動化と Cloudflare Workers へのデプロイ手順。
+- `docs/implementation-plan.md`：実装ロードマップと進捗メモ。
+- `docs/memory-mcp-spec.md`：全体アーキテクチャと詳細仕様。
