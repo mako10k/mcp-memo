@@ -1,0 +1,83 @@
+# MCP Memory Server
+
+Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索）MCP サーバです。Neon (serverless PostgreSQL + pgvector) をデータストアに採用し、OpenAI Embeddings API で埋め込みベクトルを生成します。
+
+## 機能
+- `memory.save`：メモの新規作成 / 更新（埋め込み自動生成、メタデータマージ、バージョン増分）。
+- `memory.search`：ベクトル類似度検索＋メタデータフィルタ。
+- `memory.delete`：名前空間 + memo ID で削除。
+- すべてのハンドラが MCP ツール呼び出し形式（`{ tool, params }` JSON）に対応。
+
+## 必要環境
+- [Bun](https://bun.sh/) 1.1 以上
+- [Wrangler CLI](https://developers.cloudflare.com/workers/wrangler/install-and-update/)
+- OpenAI API キー（Embeddings 用）
+- Neon アカウント（pgvector 有効化）
+
+## セットアップ
+1. 依存関係のインストール
+   ```bash
+   bun install
+   ```
+2. Neon 側で以下の SQL を実行し、テーブルとインデックスを作成します。
+   ```sql
+   \i packages/server/migrations/001_init.sql
+   ```
+3. Cloudflare Workers のシークレットを登録（wrangler）
+   ```bash
+   wrangler secret put DATABASE_URL
+   wrangler secret put OPENAI_API_KEY
+   wrangler secret put OPENAI_EMBEDDING_MODEL # 任意（未設定時は text-embedding-3-small）
+   ```
+4. 開発サーバを起動
+   ```bash
+   bun run dev
+   ```
+   `wrangler dev` が起動し、MCP ツール呼び出しを受け付けます。
+
+## ユニットテスト
+Bun の組み込みテストランナーを利用しています。
+```bash
+bun test
+```
+
+## 環境変数
+| 変数 | 説明 | 必須 |
+| --- | --- | --- |
+| `DATABASE_URL` | Neon の接続文字列（pooler 推奨）。 | ✅ |
+| `OPENAI_API_KEY` | Embeddings API のキー。 | ✅ |
+| `OPENAI_EMBEDDING_MODEL` | 利用モデル。デフォルト `text-embedding-3-small`。 | 任意 |
+| `OPENAI_BASE_URL` | 互換 API を使う場合のエンドポイント。 | 任意 |
+
+## API プロトコル
+- リクエスト：`POST` + JSON
+  ```json
+  {
+    "tool": "memory.save",
+    "params": {
+      "namespace": "default",
+      "memoId": "...",
+      "content": "...",
+      "metadata": { "topic": "demo" }
+    }
+  }
+  ```
+- レスポンス例：
+  ```json
+  {
+    "memo": {
+      "memoId": "...",
+      "namespace": "default",
+      "content": "...",
+      "metadata": { "topic": "demo" },
+      "createdAt": "2025-10-09T00:00:00.000Z",
+      "updatedAt": "2025-10-09T00:00:00.000Z",
+      "version": 1
+    }
+  }
+  ```
+
+## 今後の TODO
+- Drizzle ORM / マイグレーション自動化。
+- OpenAI Embeddings フェイルオーバー対応。
+- E2E テスト（Workers 上）と実 DB を用いた統合テスト。
