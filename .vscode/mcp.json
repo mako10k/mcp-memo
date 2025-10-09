@@ -1,0 +1,27 @@
+{
+	"servers": {
+		"mcp-search": {
+			"type": "stdio",
+			"command": "npx",
+			"args": [
+				"@mako10k/mcp-search@2.2.0"
+			],
+			"env": {
+				"GOOGLE_API_KEY": "${input:google_api_key}",
+				"GOOGLE_CX": "${input:google_cx}"
+			}
+		}
+	},
+	"inputs": [
+		{
+			"id": "google_api_key",
+			"type": "promptString",
+			"description": "Google Custom Search API Key"
+		},
+		{
+			"id": "google_cx",
+			"type": "promptString",
+			"description": "Google Custom Search Engine ID (CX)"
+		}
+	]
+}

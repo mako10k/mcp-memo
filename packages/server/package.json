@@ -1,0 +1,17 @@
+{
+  "name": "@mcp/memory-server",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev src/index.ts --experimental-local",
+    "build": "wrangler deploy --dry-run",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "wrangler": "^3.80.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240909.0",
+    "typescript": "^5.4.5"
+  }
+}

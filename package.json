@@ -1,0 +1,13 @@
+{
+  "name": "mcp-memo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "bun run check",
+    "check": "echo 'No checks defined yet'",
+    "format": "echo 'No formatter configured yet'"
+  },
+  "packageManager": "bun@1.1.12"
+}

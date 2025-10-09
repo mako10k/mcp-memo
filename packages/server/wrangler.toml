@@ -1,0 +1,6 @@
+name = "mcp-memory-server"
+main = "src/index.ts"
+compatibility_date = "2024-10-01"
+
+[build]
+command = "bun install"
