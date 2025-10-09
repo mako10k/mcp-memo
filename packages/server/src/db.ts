@@ -45,6 +45,12 @@ export interface SearchResult extends MemoryEntry {
   score: number | null;
 }
 
+export interface MemoryStore {
+  upsert(params: UpsertParams): Promise<MemoryEntry>;
+  search(params: SearchParams): Promise<SearchResult[]>;
+  delete(params: DeleteParams): Promise<MemoryEntry | null>;
+}
+
 function toVectorLiteral(vector: number[]): string {
   if (!Array.isArray(vector) || vector.length === 0) {
     throw new Error("Embedding vector is empty");
@@ -71,7 +77,7 @@ function mapRow(row: MemoryRow): MemoryEntry {
   };
 }
 
-export function createMemoryStore(env: EnvVars) {
+export function createMemoryStore(env: EnvVars): MemoryStore {
   const sql = neon(env.DATABASE_URL);
 
   return {

@@ -4,11 +4,25 @@
 			"type": "stdio",
 			"command": "npx",
 			"args": [
-				"@mako10k/mcp-search@2.2.0"
+				"@mako10k/mcp-search"
 			],
 			"env": {
 				"GOOGLE_API_KEY": "${input:google_api_key}",
 				"GOOGLE_CX": "${input:google_cx}"
+			}
+		},
+		"mcp-shell-server": {
+			"type": "stdio",
+			"command": "npx",
+			"args": [
+				"@mako10k/mcp-shell-server"
+			],
+			"env": {
+				"MCP_SHELL_SECURITY_MODE": "restrictive",
+				"MCP_SHELL_DEFAULT_WORKDIR": "/home/user/projects",
+				"MCP_SHELL_ALLOWED_WORKDIRS": "/home/user,/tmp",
+				"MCP_DISABLED_TOOLS": "process_terminate,delete_execution_outputs",
+				"MCP_SHELL_MAX_EXECUTION_TIME": "300"
 			}
 		}
 	},

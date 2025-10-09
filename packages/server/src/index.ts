@@ -12,6 +12,11 @@ import type { EnvVars } from "./env";
 import type { ToolInvocation } from "./schemas";
 import type { MemoryDeleteResponse, MemorySaveResponse, MemorySearchResponse } from "@mcp/shared";
 
+interface HandlerDependencies {
+  store?: ReturnType<typeof createMemoryStore>;
+  embed?: (input: string) => Promise<number[]>;
+}
+
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -21,25 +26,28 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
-async function handleInvocation(
+export async function handleInvocation(
   invocation: ToolInvocation,
-  envVars: EnvVars
+  envVars: EnvVars,
+  dependencies: HandlerDependencies = {}
 ): Promise<Response> {
-  const store = createMemoryStore(envVars);
+  const store = dependencies.store ?? createMemoryStore(envVars);
+  const embed =
+    dependencies.embed ?? (async (input: string) => (await generateEmbedding(envVars, input)).vector);
 
   switch (invocation.tool) {
     case "memory.save": {
       const parsed = saveInputSchema.parse(invocation.params ?? {});
       const metadataPatch = parsed.metadata && Object.keys(parsed.metadata).length ? parsed.metadata : undefined;
 
-      const embedding = await generateEmbedding(envVars, parsed.content);
+      const embeddingVector = await embed(parsed.content);
       const memo = await store.upsert({
         namespace: parsed.namespace,
         memoId: parsed.memoId,
         title: parsed.title,
         content: parsed.content,
         metadataPatch,
-        embedding: embedding.vector
+        embedding: embeddingVector
       });
 
       const payload: MemorySaveResponse = { memo };
@@ -48,7 +56,7 @@ async function handleInvocation(
     case "memory.search": {
       const parsed = searchInputSchema.parse(invocation.params ?? {});
 
-      const embeddingVector = parsed.query ? (await generateEmbedding(envVars, parsed.query)).vector : undefined;
+      const embeddingVector = parsed.query ? await embed(parsed.query) : undefined;
 
       const metadataFilter = parsed.metadataFilter && Object.keys(parsed.metadataFilter).length
         ? parsed.metadataFilter
