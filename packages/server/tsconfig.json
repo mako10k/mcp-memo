@@ -1,13 +1,16 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ES2022",
-    "moduleResolution": "Node",
+  "module": "ES2022",
+  "moduleResolution": "Bundler",
   "lib": ["ES2022", "DOM"],
     "strict": true,
     "esModuleInterop": true,
     "sourceMap": true,
-    "types": ["@cloudflare/workers-types"]
+    "types": ["@cloudflare/workers-types"],
+    "paths": {
+      "@mcp/shared": ["../shared/src"]
+    }
   },
   "include": ["src/**/*"]
 }

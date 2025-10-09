@@ -11,3 +11,21 @@ export interface MemoryEntry {
   updatedAt: string;
   version: number;
 }
+
+export interface MemorySearchResult extends MemoryEntry {
+  score: number | null;
+}
+
+export interface MemorySaveResponse {
+  memo: MemoryEntry;
+}
+
+export interface MemorySearchResponse {
+  items: MemorySearchResult[];
+  count: number;
+}
+
+export interface MemoryDeleteResponse {
+  deleted: boolean;
+  memo?: MemoryEntry;
+}
