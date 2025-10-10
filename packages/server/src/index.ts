@@ -7,14 +7,23 @@ import {
   searchInputSchema,
   toolInvocationSchema
 } from "./schemas";
+import { createApiKeyStore } from "./auth.js";
+import { resolveNamespace, type NamespaceResolution } from "./namespace.js";
 
 import type { EnvVars } from "./env";
 import type { ToolInvocation } from "./schemas";
 import type { MemoryDeleteResponse, MemorySaveResponse, MemorySearchResponse } from "@mcp/shared";
+import type { ApiKeyContext } from "./auth.js";
 
 interface HandlerDependencies {
   store?: ReturnType<typeof createMemoryStore>;
   embed?: (input: string) => Promise<number[]>;
+}
+
+export interface RequestContext extends ApiKeyContext {}
+
+export interface InvocationOptions {
+  defaultNamespaceOverride?: string;
 }
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -29,7 +38,9 @@ function jsonResponse(data: unknown, status = 200): Response {
 export async function handleInvocation(
   invocation: ToolInvocation,
   envVars: EnvVars,
-  dependencies: HandlerDependencies = {}
+  context: RequestContext,
+  dependencies: HandlerDependencies = {},
+  options: InvocationOptions = {}
 ): Promise<Response> {
   const store = dependencies.store ?? createMemoryStore(envVars);
   const embed =
@@ -38,11 +49,23 @@ export async function handleInvocation(
   switch (invocation.tool) {
     case "memory.save": {
       const parsed = saveInputSchema.parse(invocation.params ?? {});
+      let resolved: NamespaceResolution;
+      try {
+        resolved = resolveNamespace(context, {
+          namespace: parsed.namespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+      } catch (error) {
+        return jsonResponse(
+          { message: "Invalid namespace", detail: (error as Error).message },
+          400
+        );
+      }
       const metadataPatch = parsed.metadata && Object.keys(parsed.metadata).length ? parsed.metadata : undefined;
 
       const embeddingVector = await embed(parsed.content);
       const memo = await store.upsert({
-        namespace: parsed.namespace,
+        namespace: resolved.namespace,
         memoId: parsed.memoId,
         title: parsed.title,
         content: parsed.content,
@@ -55,6 +78,18 @@ export async function handleInvocation(
     }
     case "memory.search": {
       const parsed = searchInputSchema.parse(invocation.params ?? {});
+      let resolved: NamespaceResolution;
+      try {
+        resolved = resolveNamespace(context, {
+          namespace: parsed.namespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+      } catch (error) {
+        return jsonResponse(
+          { message: "Invalid namespace", detail: (error as Error).message },
+          400
+        );
+      }
 
       const embeddingVector = parsed.query ? await embed(parsed.query) : undefined;
 
@@ -63,7 +98,7 @@ export async function handleInvocation(
         : undefined;
 
       const items = await store.search({
-        namespace: parsed.namespace,
+        namespace: resolved.namespace,
         embedding: embeddingVector,
         metadataFilter,
         k: parsed.k,
@@ -78,7 +113,19 @@ export async function handleInvocation(
     }
     case "memory.delete": {
       const parsed = deleteInputSchema.parse(invocation.params ?? {});
-      const deleted = await store.delete({ namespace: parsed.namespace, memoId: parsed.memoId });
+      let resolved: NamespaceResolution;
+      try {
+        resolved = resolveNamespace(context, {
+          namespace: parsed.namespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+      } catch (error) {
+        return jsonResponse(
+          { message: "Invalid namespace", detail: (error as Error).message },
+          400
+        );
+      }
+      const deleted = await store.delete({ namespace: resolved.namespace, memoId: parsed.memoId });
       if (!deleted) {
         return jsonResponse({ message: "Memo not found" }, 404);
       }
@@ -104,6 +151,17 @@ export default {
       return jsonResponse({ message: (error as Error).message }, 500);
     }
 
+    const apiKey = extractApiKey(request);
+    if (!apiKey) {
+      return jsonResponse({ message: "Unauthorized" }, 401);
+    }
+
+    const authStore = createApiKeyStore(envVars);
+    const context = await authStore.findByToken(apiKey);
+    if (!context) {
+      return jsonResponse({ message: "Unauthorized" }, 401);
+    }
+
     let body: unknown;
     try {
       body = await request.json();
@@ -116,11 +174,33 @@ export default {
       return jsonResponse({ message: "Invalid request payload", issues: result.error.issues }, 400);
     }
 
+    const defaultNamespaceOverride = extractNamespaceOverride(request);
+
     try {
-      return await handleInvocation(result.data, envVars);
+      return await handleInvocation(result.data, envVars, context, {}, { defaultNamespaceOverride });
     } catch (error) {
       console.error("Handler error", error);
       return jsonResponse({ message: "Internal server error", detail: (error as Error).message }, 500);
     }
   }
 };
+
+function extractApiKey(request: Request): string | null {
+  const authorization = request.headers.get("authorization");
+  if (authorization) {
+    const match = authorization.match(/^Bearer\s+(.+)$/i);
+    if (match?.[1]) {
+      return match[1].trim();
+    }
+  }
+
+  const apiKey = request.headers.get("x-api-key");
+  return apiKey ? apiKey.trim() : null;
+}
+
+function extractNamespaceOverride(request: Request): string | undefined {
+  const override = request.headers.get("x-namespace-default");
+  if (!override) return undefined;
+  const trimmed = override.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}

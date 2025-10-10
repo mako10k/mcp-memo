@@ -27,6 +27,7 @@ memory-mcp
 | `MEMORY_HTTP_BEARER_TOKEN` | 認証用 Bearer トークン | なし |
 | `MEMORY_HTTP_HEADERS` | 追加ヘッダー (JSON 文字列) | なし |
 | `MEMORY_HTTP_TIMEOUT_MS` | HTTP タイムアウト (ms) | なし |
+| `MEMORY_NAMESPACE_DEFAULT` | 相対パス解決に使うデフォルト名前空間。API キーが持つ推奨値を上書きできます。 | なし |
 
 ## MCP クライアントへの追加
 

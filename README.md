@@ -79,6 +79,7 @@ bun test
 | `MEMORY_HTTP_BEARER_TOKEN` | バックエンドに付与する Bearer Token。 | 任意 |
 | `MEMORY_HTTP_HEADERS` | 追加ヘッダー（JSON 文字列）。 | 任意 |
 | `MEMORY_HTTP_TIMEOUT_MS` | バックエンドへのタイムアウト（ミリ秒）。 | 任意 |
+| `MEMORY_NAMESPACE_DEFAULT` | 相対パス解決に用いるデフォルト名前空間（API キーの推奨値を上書き）。 | 任意 |
 
 ### MCP クライアントへの組み込み
 

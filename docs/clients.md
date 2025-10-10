@@ -29,6 +29,7 @@
 
 1. Cline の設定画面で MCP サーバを追加。
 2. 「コマンド」欄に `npm exec @mako10k/mcp-memo`、引数欄に `--memory-http-url https://<your-worker>.workers.dev` を入力。
+3. ルートからのデフォルト名前空間を切り替えたい場合は `MEMORY_NAMESPACE_DEFAULT` を設定してください。
 3. 追加ヘッダーを使う場合は `MEMORY_HTTP_HEADERS` に JSON 文字列を渡します。
 
 ## VS Code (MCP 拡張)
@@ -47,7 +48,8 @@
       ],
       "env": {
         "MEMORY_HTTP_URL": "https://<your-worker>.workers.dev",
-        "NODE_EXTRA_CA_CERTS": "${workspaceFolder}/certs/cloudflare-chain.pem"
+          "NODE_EXTRA_CA_CERTS": "${workspaceFolder}/certs/cloudflare-chain.pem",
+          "MEMORY_NAMESPACE_DEFAULT": "projectA/DEF"
       }
     }
   }
@@ -63,3 +65,4 @@
   ```
 
 - `bunx @mako10k/mcp-memo` でも同様に動作します。
+- API が推奨するデフォルト名前空間から変更したいときは、クライアント側で `MEMORY_NAMESPACE_DEFAULT` を指定すると相対パス解決が上書きされます。
