@@ -13,14 +13,73 @@ import {
   type MemoMetadata,
   type SaveInput,
   type SearchInput
-} from "@mcp/shared";
+} from "./memorySchemas";
 import { loadConfig } from "./config";
 import { MemoryHttpBridge } from "./httpBridge";
 
 const serverInfo = {
   name: "memory-mcp",
-  version: "0.1.0"
+  version: "0.1.2"
 };
+
+type CliArgKey =
+  | "memory-http-url"
+  | "memory-http-bearer-token"
+  | "memory-http-headers"
+  | "memory-http-timeout-ms";
+
+const cliArgToEnv: Record<CliArgKey, keyof NodeJS.ProcessEnv> = {
+  "memory-http-url": "MEMORY_HTTP_URL",
+  "memory-http-bearer-token": "MEMORY_HTTP_BEARER_TOKEN",
+  "memory-http-headers": "MEMORY_HTTP_HEADERS",
+  "memory-http-timeout-ms": "MEMORY_HTTP_TIMEOUT_MS"
+};
+
+function showHelp(): void {
+  const lines = [
+    "Usage: memory-mcp [options]",
+    "",
+    "Options:",
+    "  --memory-http-url <url>            HTTP endpoint for the memory worker",
+    "  --memory-http-bearer-token <token> Optional bearer token",
+    "  --memory-http-headers <json>       Additional headers as JSON string",
+    "  --memory-http-timeout-ms <ms>      HTTP timeout in milliseconds",
+    "  -h, --help                         Show this message"
+  ];
+  console.log(lines.join("\n"));
+}
+
+function parseCliArgs(argv: string[]): Record<string, string> {
+  const overrides: Record<string, string> = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const current = argv[index];
+    if (!current?.startsWith("--")) continue;
+
+    if (current === "--help" || current === "-h") {
+      showHelp();
+      process.exit(0);
+    }
+
+    const [flag, rawValue] = current.split("=", 2);
+    const key = flag.slice(2) as CliArgKey;
+    if (!(key in cliArgToEnv)) {
+      console.warn(`Unknown option: ${flag}`);
+      continue;
+    }
+
+    let value = rawValue;
+    if (value === undefined) {
+      value = argv[index + 1];
+      if (value === undefined) {
+        throw new Error(`Option ${flag} requires a value`);
+      }
+      index += 1;
+    }
+
+    overrides[cliArgToEnv[key]] = value;
+  }
+  return overrides;
+}
 
 function formatMetadata(metadata: MemoMetadata | undefined): string {
   if (!metadata) return "{}";
@@ -119,7 +178,8 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
 }
 
 async function main(): Promise<void> {
-  const config = loadConfig();
+  const overrides = parseCliArgs(process.argv.slice(2));
+  const config = loadConfig({ ...process.env, ...overrides });
   const bridge = new MemoryHttpBridge(config);
 
   const server = new McpServer(serverInfo, {

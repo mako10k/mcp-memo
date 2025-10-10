@@ -41,7 +41,13 @@ Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索�
   ```bash
   bun run --cwd packages/stdio start
   ```
-  `MEMORY_HTTP_URL` などの環境変数でバックエンドの URL やヘッダーを設定できます。
+  または npm 実行環境のみで動かす場合は以下の通りです。
+  ```bash
+  npm exec @mako10k/mcp-memo -- \
+    --memory-http-url https://<your-worker>.workers.dev \
+    --memory-http-timeout-ms 15000
+  ```
+  TLS の独自証明書を利用する場合は `NODE_EXTRA_CA_CERTS` / `BUN_CERT` に `certs/cloudflare-chain.pem` を指定してください。
 
 ### CI（自動テスト）
 - GitHub Actions ワークフロー `.github/workflows/ci.yml` が push / pull request 時に自動実行されます。
@@ -72,6 +78,21 @@ bun test
 | `MEMORY_HTTP_BEARER_TOKEN` | バックエンドに付与する Bearer Token。 | 任意 |
 | `MEMORY_HTTP_HEADERS` | 追加ヘッダー（JSON 文字列）。 | 任意 |
 | `MEMORY_HTTP_TIMEOUT_MS` | バックエンドへのタイムアウト（ミリ秒）。 | 任意 |
+
+### MCP クライアントへの組み込み
+
+- **Claude Desktop / Cline**: `npm exec @mako10k/mcp-memo` をコマンドとして登録し、必要な環境変数を指定します。
+- **VS Code**: `.vscode/mcp.json` の `memory-mcp` エントリを `npm exec @mako10k/mcp-memo` に置き換えるとローカルビルド不要で利用できます。
+
+詳しい設定例は [`docs/clients.md`](docs/clients.md) を参照してください。
+
+### Cloudflare Workers での準備
+
+Cloudflare 側の環境構築・証明書チェーンの取得方法を [`docs/cloudflare.md`](docs/cloudflare.md) にまとめました。初回デプロイ前に参照してください。
+
+### npm パッケージの公開
+
+`@mako10k/mcp-memo` のリリース手順（バージョン更新・`npm publish` 実行手順）は [`docs/publishing.md`](docs/publishing.md) に記載しています。
 
 ## MCP クライアント設定
 - VS Code の `.vscode/mcp.json` は `memory-mcp` を STDIO サーバとして構成しています。

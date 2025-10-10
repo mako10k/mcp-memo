@@ -1,5 +1,5 @@
 import { type MemoryBridgeConfig } from "./config";
-import type { ToolInvocation } from "@mcp/shared";
+import type { ToolInvocation } from "./memorySchemas";
 
 export class MemoryHttpBridge {
   constructor(private readonly config: MemoryBridgeConfig) {}

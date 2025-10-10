@@ -1,19 +1,53 @@
 {
-  "name": "@mcp/memory-stdio",
-  "version": "0.1.0",
+  "name": "@mako10k/mcp-memo",
+  "version": "0.1.2",
+  "description": "STDIO adapter that bridges the mcp-memory HTTP server to common MCP clients.",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "bin": {
-    "memory-mcp": "./dist/index.js"
+    "memory-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "mcp",
+    "stdio",
+    "claude",
+    "cline",
+    "cloudflare",
+    "memory",
+    "vector-search"
+  ],
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mako10k/mcp-memo.git",
+    "directory": "packages/stdio"
+  },
+  "bugs": {
+    "url": "https://github.com/mako10k/mcp-memo/issues"
+  },
+  "homepage": "https://github.com/mako10k/mcp-memo#readme",
+  "engines": {
+    "node": ">=18.18"
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --target node18 --out-dir dist --silent",
     "dev": "tsup src/index.ts --format esm --dts --target node18 --out-dir dist --watch",
-    "start": "tsup src/index.ts --format esm --dts --target node18 --out-dir dist --silent && node --enable-source-maps dist/index.js",
-    "prepublishOnly": "bun run build"
+    "start": "node ./scripts/start.mjs",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.20.0",
-    "@mcp/shared": "workspace:*",
     "zod": "^3.23.8"
   },
   "devDependencies": {
