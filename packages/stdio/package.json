@@ -1,6 +1,6 @@
 {
   "name": "@mako10k/mcp-memo",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "STDIO adapter that bridges the mcp-memory HTTP server to common MCP clients.",
   "type": "module",
   "main": "./dist/index.js",
@@ -41,8 +41,8 @@
     "node": ">=18.18"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --target node18 --out-dir dist --silent",
-    "dev": "tsup src/index.ts --format esm --dts --target node18 --out-dir dist --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "start": "node ./scripts/start.mjs",
     "prepare": "npm run build"
   },
