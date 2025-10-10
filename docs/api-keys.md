@@ -12,8 +12,8 @@
 
 ```bash
 bun run --cwd packages/server create:api-key \
-  --root acme \
-  --default acme/DEF
+  --rootns acme \
+  --defaultns DEF
 ```
 
 実行すると下記のような JSON が標準出力に表示されます。
@@ -40,12 +40,13 @@ bun run --cwd packages/server create:api-key \
 | `--owner <uuid>` | 既存の `owner_id` を使いまわしたいときに指定します。形式が UUID でない場合はエラーになります。 |
 | `--status <active|revoked>` | 付与するキーの状態。既定値は `active`。登録直後から無効化しておきたい場合は `revoked` を指定します。 |
 | `--database-url <url>` | 環境変数ではなくコマンド引数で接続文字列を指定したいときに利用します。 |
+| `--defaultns <path>` | ルート名前空間からの相対パスでデフォルト名前空間を指定します。例: `DEF`、`projects/inbox`。必須。 |
 
 ## ルートとデフォルト名前空間の注意
 
-- `--root` は API キーに割り当てるルート名前空間 (`chroot`) を指定します。例: `acme`。
-- `--default` はルート配下で `cd` したい初期場所を指定します。例: `acme/DEF`。
-- スクリプトは `--default` が必ず `--root` 配下にあるかどうか検証します。条件を満たさない値を渡すとエラーになります。
+- `--rootns` は API キーに割り当てるルート名前空間 (`chroot`) を指定します。例: `acme`。
+- `--defaultns` はルート配下で `cd` したい初期場所を相対パスで指定します。例: `DEF`、`projects/inbox`。
+- スクリプトは `--defaultns` にルート接頭辞が含まれている場合でも自動的に整形し、結果が必ずルート配下になるよう検証します。
 
 ## 既存キーの無効化
 

@@ -22,13 +22,13 @@ function usage(): never {
 Usage: bun run --cwd packages/server src/scripts/createApiKey.ts [options]
 
 Required options:
-  --root <namespace>       Root namespace (e.g. "acme")
-  --default <namespace>    Default namespace relative to root (e.g. "acme/DEF")
+  --rootns <namespace>      Root namespace (e.g. "acme")
+  --defaultns <namespace>   Default namespace relative to root (e.g. "DEF" or "projects/inbox")
 
 Optional options:
-  --owner <uuid>           Existing owner UUID (default: generate new UUID)
-  --status <status>        Key status (active | revoked) (default: active)
-  --database-url <url>     Override DATABASE_URL environment variable
+  --owner <uuid>            Existing owner UUID (default: generate new UUID)
+  --status <status>         Key status (active | revoked) (default: active)
+  --database-url <url>      Override DATABASE_URL environment variable
 `);
   process.exit(1);
 }
@@ -40,8 +40,8 @@ function isUuid(value: string): value is Uuid {
 function parseCliArgs(argv: string[]): CliOptions {
   const args = [...argv];
   let ownerId = crypto.randomUUID() as Uuid;
-  let rootNamespace: string | undefined;
-  let defaultNamespace: string | undefined;
+  let rootInput: string | undefined;
+  let defaultInput: string | undefined;
   let status: CliOptions["status"] = "active";
   let databaseUrl = process.env.DATABASE_URL ?? "";
 
@@ -57,14 +57,14 @@ function parseCliArgs(argv: string[]): CliOptions {
       case "-h":
         usage();
         break;
-      case "--root":
+      case "--rootns":
         if (!next) usage();
-        rootNamespace = next;
+        rootInput = next;
         if (inlineValue === undefined) index += 1;
         break;
-      case "--default":
+      case "--defaultns":
         if (!next) usage();
-        defaultNamespace = next;
+        defaultInput = next;
         if (inlineValue === undefined) index += 1;
         break;
       case "--owner":
@@ -95,20 +95,29 @@ function parseCliArgs(argv: string[]): CliOptions {
     }
   }
 
-  if (!rootNamespace || !rootNamespace.trim()) {
-    throw new Error("--root is required");
+  if (!rootInput || !rootInput.trim()) {
+    throw new Error("--rootns is required");
   }
-  if (!defaultNamespace || !defaultNamespace.trim()) {
-    throw new Error("--default is required");
+  if (!defaultInput || !defaultInput.trim()) {
+    throw new Error("--defaultns is required");
   }
   if (!databaseUrl) {
     throw new Error("DATABASE_URL must be provided via env or --database-url");
   }
 
-  const normalizedRoot = normalizeNamespace(rootNamespace);
-  const normalizedDefault = normalizeNamespace(defaultNamespace);
+  const rootSegments = normalizeSegments(rootInput);
+  if (!rootSegments.length) {
+    throw new Error("root namespace must not be empty");
+  }
 
-  ensureUnderRoot(normalizedRoot, normalizedDefault);
+  const defaultSegments = normalizeSegments(defaultInput);
+  if (!defaultSegments.length) {
+    throw new Error("default namespace must not be empty");
+  }
+
+  const absoluteDefaultSegments = resolveDefaultSegments(rootSegments, defaultSegments);
+  const normalizedRoot = joinSegments(rootSegments);
+  const normalizedDefault = joinSegments(absoluteDefaultSegments);
 
   return {
     databaseUrl,
@@ -119,21 +128,40 @@ function parseCliArgs(argv: string[]): CliOptions {
   } satisfies CliOptions;
 }
 
-function normalizeNamespace(value: string): string {
-  return value
+function normalizeSegments(value: string): string[] {
+  const segments = value
     .split("/")
     .map((segment) => segment.trim())
-    .filter((segment) => segment.length > 0)
-    .join("/");
+    .filter((segment) => segment.length > 0);
+
+  if (segments.some((segment) => segment === "..")) {
+    throw new Error("namespace must not contain '..'");
+  }
+
+  return segments;
 }
 
-function ensureUnderRoot(root: string, target: string): void {
-  const rootSegments = root.split("/");
-  const targetSegments = target.split("/");
-  const isPrefixed = rootSegments.every((segment, index) => targetSegments[index] === segment);
-  if (!isPrefixed) {
-    throw new Error(`Default namespace must reside under root namespace (root=${root}, default=${target})`);
+function joinSegments(segments: string[]): string {
+  return segments.join("/");
+}
+
+function startsWithSegments(full: string[], prefix: string[]): boolean {
+  if (full.length < prefix.length) return false;
+  return prefix.every((segment, index) => full[index] === segment);
+}
+
+function resolveDefaultSegments(rootSegments: string[], defaultSegments: string[]): string[] {
+  const absolute = startsWithSegments(defaultSegments, rootSegments)
+    ? defaultSegments
+    : [...rootSegments, ...defaultSegments];
+
+  if (!startsWithSegments(absolute, rootSegments)) {
+    const root = joinSegments(rootSegments);
+    const target = joinSegments(absolute);
+    throw new Error(`default namespace must reside under root namespace (root=${root}, default=${target})`);
   }
+
+  return absolute;
 }
 
 function generateToken(): string {

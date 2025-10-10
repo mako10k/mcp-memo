@@ -8,3 +8,4 @@ logs/
 .wrangler/
 packages/stdio/dist/
 .vscode/mcp.json
+.api-key
