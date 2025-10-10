@@ -3,9 +3,9 @@
 Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索）MCP サーバです。Neon (serverless PostgreSQL + pgvector) をデータストアに採用し、OpenAI Embeddings API で埋め込みベクトルを生成します。
 
 ## 機能
-- `memory.save`：メモの新規作成 / 更新（埋め込み自動生成、メタデータマージ、バージョン増分）。
-- `memory.search`：ベクトル類似度検索＋メタデータフィルタ。
-- `memory.delete`：名前空間 + memo ID で削除。
+- `memory-save`：メモの新規作成 / 更新（埋め込み自動生成、メタデータマージ、バージョン増分）。
+- `memory-search`：ベクトル類似度検索＋メタデータフィルタ。
+- `memory-delete`：名前空間 + memo ID で削除。
 - すべてのハンドラが MCP ツール呼び出し形式（`{ tool, params }` JSON）に対応。
 
 ## 必要環境
@@ -29,11 +29,19 @@ Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索�
    wrangler secret put OPENAI_API_KEY
    wrangler secret put OPENAI_EMBEDDING_MODEL # 任意（未設定時は text-embedding-3-small）
    ```
-4. 開発サーバを起動
-   ```bash
-   bun run dev
-   ```
-   `wrangler dev` が起動し、MCP ツール呼び出しを受け付けます。
+4. ローカルサーバを pm2 で起動
+  ```bash
+  bunx pm2 start ecosystem.config.cjs --only memory-worker
+  bunx pm2 logs memory-worker
+  ```
+  - 停止するときは `bunx pm2 delete memory-worker`
+  - 直接起動したい場合は `bun run --cwd packages/server dev`
+
+5. MCP STDIO アダプタの起動（必要に応じて）
+  ```bash
+  bun run --cwd packages/stdio start
+  ```
+  `MEMORY_HTTP_URL` などの環境変数でバックエンドの URL やヘッダーを設定できます。
 
 ### CI（自動テスト）
 - GitHub Actions ワークフロー `.github/workflows/ci.yml` が push / pull request 時に自動実行されます。
@@ -60,6 +68,15 @@ bun test
 | `OPENAI_API_KEY` | Embeddings API のキー。 | ✅ |
 | `OPENAI_EMBEDDING_MODEL` | 利用モデル。デフォルト `text-embedding-3-small`。 | 任意 |
 | `OPENAI_BASE_URL` | 互換 API を使う場合のエンドポイント。 | 任意 |
+| `MEMORY_HTTP_URL` | STDIO アダプタが参照するバックエンド URL。デフォルト `http://127.0.0.1:8787`。 | 任意 |
+| `MEMORY_HTTP_BEARER_TOKEN` | バックエンドに付与する Bearer Token。 | 任意 |
+| `MEMORY_HTTP_HEADERS` | 追加ヘッダー（JSON 文字列）。 | 任意 |
+| `MEMORY_HTTP_TIMEOUT_MS` | バックエンドへのタイムアウト（ミリ秒）。 | 任意 |
+
+## MCP クライアント設定
+- VS Code の `.vscode/mcp.json` は `memory-mcp` を STDIO サーバとして構成しています。
+- コマンド: `bun run --cwd packages/stdio start`
+- pm2 で `memory-worker` を起動した状態で実行すると、HTTP API を透過的に利用できます。
 
 ## API プロトコル
 - リクエスト：`POST` + JSON

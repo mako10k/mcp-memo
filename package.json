@@ -9,5 +9,8 @@
     "check": "echo 'No checks defined yet'",
     "format": "echo 'No formatter configured yet'"
   },
+  "devDependencies": {
+    "pm2": "^5.3.0"
+  },
   "packageManager": "bun@1.1.12"
 }

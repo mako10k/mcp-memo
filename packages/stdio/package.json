@@ -6,9 +6,9 @@
     "memory-mcp": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm --dts --target node18 --out-dir dist",
+    "build": "tsup src/index.ts --format esm --dts --target node18 --out-dir dist --silent",
     "dev": "tsup src/index.ts --format esm --dts --target node18 --out-dir dist --watch",
-    "start": "node --enable-source-maps dist/index.js",
+    "start": "tsup src/index.ts --format esm --dts --target node18 --out-dir dist --silent && node --enable-source-maps dist/index.js",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {

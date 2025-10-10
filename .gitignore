@@ -6,3 +6,5 @@ bun.lock
 .dev.vars
 logs/
 .wrangler/
+packages/stdio/dist/
+.vscode/mcp.json
