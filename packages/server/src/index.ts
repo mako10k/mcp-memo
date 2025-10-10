@@ -65,6 +65,7 @@ export async function handleInvocation(
 
       const embeddingVector = await embed(parsed.content);
       const memo = await store.upsert({
+        ownerId: context.ownerId,
         namespace: resolved.namespace,
         memoId: parsed.memoId,
         title: parsed.title,
@@ -98,6 +99,7 @@ export async function handleInvocation(
         : undefined;
 
       const items = await store.search({
+        ownerId: context.ownerId,
         namespace: resolved.namespace,
         embedding: embeddingVector,
         metadataFilter,
@@ -125,7 +127,7 @@ export async function handleInvocation(
           400
         );
       }
-      const deleted = await store.delete({ namespace: resolved.namespace, memoId: parsed.memoId });
+  const deleted = await store.delete({ ownerId: context.ownerId, namespace: resolved.namespace, memoId: parsed.memoId });
       if (!deleted) {
         return jsonResponse({ message: "Memo not found" }, 404);
       }

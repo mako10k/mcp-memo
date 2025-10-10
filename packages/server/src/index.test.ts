@@ -54,6 +54,7 @@ describe("handleInvocation", () => {
         embed: async () => makeVector(0.01),
         store: createStoreStub({
           async upsert(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
             expect(params.namespace).toBe("legacy/DEF/default");
             return {
               memoId: params.memoId ?? "memo-1",
@@ -84,6 +85,7 @@ describe("handleInvocation", () => {
         embed: async () => makeVector(0.02),
         store: createStoreStub({
           async search(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
             expect(params.namespace).toBe("legacy/projects/inbox");
             return [
               {
@@ -119,6 +121,7 @@ describe("handleInvocation", () => {
         embed: async () => makeVector(0.01),
         store: createStoreStub({
           async delete(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
             expect(params.namespace).toBe("legacy/DEF/archive");
             return null;
           }

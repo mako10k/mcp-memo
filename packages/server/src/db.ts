@@ -20,6 +20,7 @@ interface MemoryRow {
 }
 
 export interface UpsertParams {
+  ownerId: string;
   namespace: string;
   memoId?: string;
   title?: string;
@@ -29,6 +30,7 @@ export interface UpsertParams {
 }
 
 export interface SearchParams {
+  ownerId: string;
   namespace: string;
   embedding?: number[];
   metadataFilter?: MemoMetadata;
@@ -37,6 +39,7 @@ export interface SearchParams {
 }
 
 export interface DeleteParams {
+  ownerId: string;
   namespace: string;
   memoId: string;
 }
@@ -88,20 +91,21 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
       const vectorLiteral = toVectorLiteral(params.embedding);
 
       const query = `
-        INSERT INTO memory_entries (namespace, id, title, content, content_embedding, metadata, created_at, updated_at, version)
-        VALUES ($1, $2, $3, $4, $5::vector, $6::jsonb, NOW(), NOW(), 1)
-        ON CONFLICT (namespace, id) DO UPDATE
+        INSERT INTO memory_entries (owner_id, namespace, id, title, content, content_embedding, metadata, created_at, updated_at, version)
+        VALUES ($1, $2, $3, $4, $5, $6::vector, $7::jsonb, NOW(), NOW(), 1)
+        ON CONFLICT (owner_id, namespace, id) DO UPDATE
         SET
           title = COALESCE(EXCLUDED.title, memory_entries.title),
           content = EXCLUDED.content,
           content_embedding = EXCLUDED.content_embedding,
-          metadata = CASE WHEN $7::jsonb IS NULL THEN memory_entries.metadata ELSE memory_entries.metadata || $7::jsonb END,
+          metadata = CASE WHEN $8::jsonb IS NULL THEN memory_entries.metadata ELSE memory_entries.metadata || $8::jsonb END,
           updated_at = NOW(),
           version = memory_entries.version + 1
         RETURNING namespace, id, title, content, metadata, created_at, updated_at, version;
       `;
 
-      const rows = await sql<MemoryRow>(query, [
+      const rows = (await sql(query, [
+        params.ownerId,
         params.namespace,
         memoId,
         params.title ?? null,
@@ -109,7 +113,7 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
         vectorLiteral,
         metadataInitialJson,
         metadataPatchJson
-      ]);
+      ])) as MemoryRow[];
 
       if (!rows.length) {
         throw new Error("Failed to upsert memory entry");
@@ -119,8 +123,8 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
     },
 
     async search(params: SearchParams): Promise<SearchResult[]> {
-      const conditions: string[] = ["namespace = $1"];
-      const values: unknown[] = [params.namespace];
+      const conditions: string[] = ["owner_id = $1", "namespace = $2"];
+      const values: unknown[] = [params.ownerId, params.namespace];
       let scoreClause = "NULL::double precision AS score";
       let orderClause = "ORDER BY updated_at DESC";
 
@@ -157,18 +161,18 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
         LIMIT $${limitParamIndex};
       `;
 
-      const rows = await sql<MemoryRow>(query, values);
+      const rows = (await sql(query, values)) as MemoryRow[];
 
-  return rows.map((row: MemoryRow) => ({ ...mapRow(row), score: row.score ?? null }));
+      return rows.map((row) => ({ ...mapRow(row), score: row.score ?? null }));
     },
 
     async delete(params: DeleteParams): Promise<MemoryEntry | null> {
       const query = `
         DELETE FROM memory_entries
-        WHERE namespace = $1 AND id = $2
+        WHERE owner_id = $1 AND namespace = $2 AND id = $3
         RETURNING namespace, id, title, content, metadata, created_at, updated_at, version;
       `;
-      const rows = await sql<MemoryRow>(query, [params.namespace, params.memoId]);
+      const rows = (await sql(query, [params.ownerId, params.namespace, params.memoId])) as MemoryRow[];
       if (!rows.length) {
         return null;
       }
