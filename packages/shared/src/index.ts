@@ -29,3 +29,5 @@ export interface MemoryDeleteResponse {
   deleted: boolean;
   memo?: MemoryEntry;
 }
+
+export * from "./schemas";

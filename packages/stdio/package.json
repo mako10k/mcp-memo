@@ -1,0 +1,23 @@
+{
+  "name": "@mcp/memory-stdio",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "memory-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --target node18 --out-dir dist",
+    "dev": "tsup src/index.ts --format esm --dts --target node18 --out-dir dist --watch",
+    "start": "node --enable-source-maps dist/index.js",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "@mcp/shared": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "tsup": "^8.2.4",
+    "typescript": "^5.4.5"
+  }
+}
