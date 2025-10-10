@@ -66,6 +66,12 @@
 ## 実装ステップ
 1. **DB マイグレーション**
    - `api_keys` テーブル作成、`memory_entries` に `owner_id` 追加、既存レコード紐付け。
+   - 適用手順（Neon / psql）:
+     ```sql
+     \i packages/server/migrations/001_init.sql
+     \i packages/server/migrations/002_namespace_hierarchy.sql
+     ```
+   - 既存データは `legacy` ルート配下に移動され、プレースホルダ API キー（revoked 状態）が作成されます。
 2. **サーバ改修**
    - API キー検証ロジックと `RequestContext` 追加。
    - 名前空間解決ユーティリティ実装。

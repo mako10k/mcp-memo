@@ -19,10 +19,11 @@ Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索�
    ```bash
    bun install
    ```
-2. Neon 側で以下の SQL を実行し、テーブルとインデックスを作成します。
-   ```sql
-   \i packages/server/migrations/001_init.sql
-   ```
+2. Neon 側で以下の SQL を順番に実行し、テーブルと階層化の前提スキーマを作成します。
+  ```sql
+  \i packages/server/migrations/001_init.sql
+  \i packages/server/migrations/002_namespace_hierarchy.sql
+  ```
 3. Cloudflare Workers のシークレットを登録（wrangler）
    ```bash
    wrangler secret put DATABASE_URL
