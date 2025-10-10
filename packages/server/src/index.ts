@@ -3,6 +3,7 @@ import { createMemoryStore } from "./db";
 import { generateEmbedding } from "./openai";
 import {
   deleteInputSchema,
+  listNamespacesInputSchema,
   saveInputSchema,
   searchInputSchema,
   toolInvocationSchema
@@ -12,7 +13,12 @@ import { resolveNamespace, type NamespaceResolution } from "./namespace.js";
 
 import type { EnvVars } from "./env";
 import type { ToolInvocation } from "./schemas";
-import type { MemoryDeleteResponse, MemorySaveResponse, MemorySearchResponse } from "@mcp/shared";
+import type {
+  MemoryDeleteResponse,
+  MemoryListNamespacesResponse,
+  MemorySaveResponse,
+  MemorySearchResponse
+} from "@mcp/shared";
 import type { ApiKeyContext } from "./auth.js";
 
 interface HandlerDependencies {
@@ -132,6 +138,39 @@ export async function handleInvocation(
         return jsonResponse({ message: "Memo not found" }, 404);
       }
       const payload: MemoryDeleteResponse = { deleted: true, memo: deleted };
+      return jsonResponse(payload, 200);
+    }
+    case "memory.list_namespaces": {
+      const parsed = listNamespacesInputSchema.parse(invocation.params ?? {});
+      let resolved: NamespaceResolution;
+      try {
+        resolved = resolveNamespace(context, {
+          namespace: parsed.namespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+      } catch (error) {
+        return jsonResponse(
+          { message: "Invalid namespace", detail: (error as Error).message },
+          400
+        );
+      }
+
+      const namespaces = await store.listNamespaces({
+        ownerId: context.ownerId,
+        baseNamespace: resolved.namespace,
+        depth: parsed.depth,
+        limit: parsed.limit
+      });
+
+      const payload: MemoryListNamespacesResponse = {
+        baseNamespace: resolved.namespace,
+        defaultNamespace: resolved.defaultNamespace,
+        rootNamespace: context.rootNamespace,
+        depth: parsed.depth,
+        count: namespaces.length,
+        namespaces
+      };
+
       return jsonResponse(payload, 200);
     }
     default:

@@ -29,6 +29,11 @@ memory-mcp
 | `MEMORY_HTTP_TIMEOUT_MS` | HTTP タイムアウト (ms) | なし |
 | `MEMORY_NAMESPACE_DEFAULT` | 相対パス解決に使うデフォルト名前空間。API キーが持つ推奨値を上書きできます。 | なし |
 
+## 提供ツール
+
+- `memory-save` / `memory-search` / `memory-delete`
+- `memory-list-namespaces`（基点からサブ名前空間を列挙）
+
 ## MCP クライアントへの追加
 
 - **Claude Desktop / Cline**: `npm exec @mako10k/mcp-memo` をコマンドとして登録します。必要に応じて `env` に上記環境変数を設定してください。

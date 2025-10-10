@@ -23,13 +23,14 @@
    }
    ```
 
-3. Claude Desktop を再起動すると、`memory-save` / `memory-search` / `memory-delete` ツールが利用可能になります。
+3. Claude Desktop を再起動すると、`memory-save` / `memory-search` / `memory-delete` / `memory-list-namespaces` ツールが利用可能になります。
 
 ## Cline
 
 1. Cline の設定画面で MCP サーバを追加。
 2. 「コマンド」欄に `npm exec @mako10k/mcp-memo`、引数欄に `--memory-http-url https://<your-worker>.workers.dev` を入力。
 3. ルートからのデフォルト名前空間を切り替えたい場合は `MEMORY_NAMESPACE_DEFAULT` を設定してください。
+4. 名前空間の構造を把握したいときは `memory-list-namespaces` ツールを呼び出せます。
 3. 追加ヘッダーを使う場合は `MEMORY_HTTP_HEADERS` に JSON 文字列を渡します。
 
 ## VS Code (MCP 拡張)

@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { handleInvocation, type RequestContext } from "./index";
 import type { EnvVars } from "./env";
 import type { MemoryStore, SearchResult } from "./db";
-import type { MemoryEntry } from "@mcp/shared";
+import type { MemoryEntry, MemoryListNamespacesResponse } from "@mcp/shared";
 
 const envStub: EnvVars = {
   DATABASE_URL: "postgresql://user:pass@localhost/db",
@@ -37,10 +37,13 @@ function createStoreStub(overrides: Partial<MemoryStore> = {}): MemoryStore {
     }
   ];
 
+  const defaultNamespaces = ["legacy/DEF", "legacy/DEF/default"];
+
   return {
     upsert: overrides.upsert ?? (async () => defaultMemo),
     search: overrides.search ?? (async () => defaultSearch),
-    delete: overrides.delete ?? (async () => defaultMemo)
+    delete: overrides.delete ?? (async () => defaultMemo),
+    listNamespaces: overrides.listNamespaces ?? (async () => defaultNamespaces)
   } satisfies MemoryStore;
 }
 
@@ -130,6 +133,39 @@ describe("handleInvocation", () => {
     );
 
     expect(response.status).toBe(404);
+  });
+
+  it("lists namespaces with depth limit", async () => {
+    const response = await handleInvocation(
+      { tool: "memory.list_namespaces", params: { namespace: "projects", depth: 2, limit: 50 } },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async listNamespaces(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
+            expect(params.baseNamespace).toBe("legacy/DEF/projects");
+            expect(params.depth).toBe(2);
+            expect(params.limit).toBe(50);
+            return [
+              "legacy/DEF/projects",
+              "legacy/DEF/projects/app",
+              "legacy/DEF/projects/app/backend"
+            ];
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as MemoryListNamespacesResponse;
+    expect(json.baseNamespace).toBe("legacy/DEF/projects");
+    expect(json.depth).toBe(2);
+    expect(json.count).toBe(3);
+    expect(json.namespaces[0]).toBe("legacy/DEF/projects");
+    expect(json.namespaces[1]).toBe("legacy/DEF/projects/app");
+    expect(json.namespaces[2]).toBe("legacy/DEF/projects/app/backend");
   });
 
   it("rejects unsupported tool", async () => {

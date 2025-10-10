@@ -50,11 +50,12 @@
 
 ### 5. 名前空間一覧ツール
 - 新しい MCP ツール `memory-list-namespaces` を追加。
-  - 入力: `prefix` (任意), `depth` (任意)。デフォルトで現在のデフォルト名前空間を基点とし、サブパスを列挙。
-  - 出力: サブ名前空間のリスト（階層構造をフラットな配列で返し、クライアントで整形可能にする）。
+   - 入力: `namespace` (任意), `depth` (既定 1, 最大 5), `limit` (既定 100, 最大 500)。
+   - 基点となる名前空間は API キーのデフォルトを起点に解決し、ルートを越える経路はエラーとする。
+   - 出力: 基点を含むユニークなサブ名前空間の配列（ソート済み）。
 
 ### 6. STDIO アダプタ
-- 新オプション `--memory-http-api-key` と環境変数 `MEMORY_HTTP_API_KEY` に対応。
+- `--memory-http-bearer-token` / `MEMORY_HTTP_BEARER_TOKEN` で API キーを渡す（既存オプションを継続利用）。
 - HTTP リクエストに `Authorization: Bearer` ヘッダーを付与。
 - `memory-list-namespaces` をクライアント側にも登録し、結果を整形して出力。
 

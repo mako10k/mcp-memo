@@ -19,6 +19,10 @@ interface MemoryRow {
   score?: number | null;
 }
 
+interface NamespaceRow {
+  namespace: string;
+}
+
 export interface UpsertParams {
   ownerId: string;
   namespace: string;
@@ -44,6 +48,13 @@ export interface DeleteParams {
   memoId: string;
 }
 
+export interface ListNamespacesParams {
+  ownerId: string;
+  baseNamespace: string;
+  depth: number;
+  limit: number;
+}
+
 export interface SearchResult extends MemoryEntry {
   score: number | null;
 }
@@ -52,6 +63,7 @@ export interface MemoryStore {
   upsert(params: UpsertParams): Promise<MemoryEntry>;
   search(params: SearchParams): Promise<SearchResult[]>;
   delete(params: DeleteParams): Promise<MemoryEntry | null>;
+  listNamespaces(params: ListNamespacesParams): Promise<string[]>;
 }
 
 function toVectorLiteral(vector: number[]): string {
@@ -78,6 +90,22 @@ function mapRow(row: MemoryRow): MemoryEntry {
     updatedAt: row.updated_at,
     version: row.version
   };
+}
+
+function splitNamespace(value: string): string[] {
+  return value
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+}
+
+function startsWithSegments(full: string[], prefix: string[]): boolean {
+  if (full.length < prefix.length) return false;
+  return prefix.every((segment, index) => full[index] === segment);
+}
+
+function escapeForLike(value: string): string {
+  return value.replace(/([_%\\])/g, "\\$1");
 }
 
 export function createMemoryStore(env: EnvVars): MemoryStore {
@@ -177,6 +205,44 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
         return null;
       }
       return mapRow(rows[0]);
+    },
+
+    async listNamespaces(params: ListNamespacesParams): Promise<string[]> {
+      const base = params.baseNamespace.trim();
+      if (!base) {
+        throw new Error("Base namespace must not be empty");
+      }
+
+      const depth = Math.max(1, Math.min(params.depth, 5));
+      const limit = Math.max(1, Math.min(params.limit, 500));
+
+      const baseSegments = splitNamespace(base);
+      const escapedBase = escapeForLike(base);
+      const likePattern = `${escapedBase}/%`;
+
+      const query = `
+        SELECT DISTINCT namespace
+        FROM memory_entries
+        WHERE owner_id = $1
+          AND (namespace = $2 OR namespace LIKE $3 ESCAPE '\\')
+        ORDER BY namespace
+        LIMIT $4;
+      `;
+
+      const rows = (await sql(query, [params.ownerId, base, likePattern, limit])) as NamespaceRow[];
+
+      const maxSegments = baseSegments.length + depth;
+      const namespaces = new Set<string>([base]);
+
+      for (const row of rows) {
+        const segments = splitNamespace(row.namespace);
+        if (!startsWithSegments(segments, baseSegments)) continue;
+        const truncated = segments.slice(0, Math.min(segments.length, maxSegments));
+        if (truncated.length < baseSegments.length) continue;
+        namespaces.add(truncated.join("/"));
+      }
+
+      return Array.from(namespaces).sort();
     }
   };
 }

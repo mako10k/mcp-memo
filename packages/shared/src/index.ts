@@ -30,4 +30,13 @@ export interface MemoryDeleteResponse {
   memo?: MemoryEntry;
 }
 
+export interface MemoryListNamespacesResponse {
+  baseNamespace: string;
+  defaultNamespace: string;
+  rootNamespace: string;
+  depth: number;
+  count: number;
+  namespaces: string[];
+}
+
 export * from "./schemas";

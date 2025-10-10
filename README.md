@@ -6,6 +6,7 @@ Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索�
 - `memory-save`：メモの新規作成 / 更新（埋め込み自動生成、メタデータマージ、バージョン増分）。
 - `memory-search`：ベクトル類似度検索＋メタデータフィルタ。
 - `memory-delete`：名前空間 + memo ID で削除。
+- `memory-list-namespaces`：ルート/デフォルトを基点にサブ名前空間を列挙。
 - すべてのハンドラが MCP ツール呼び出し形式（`{ tool, params }` JSON）に対応。
 
 ## 必要環境
@@ -126,6 +127,32 @@ Cloudflare 側の環境構築・証明書チェーンの取得方法を [`docs/c
       "updatedAt": "2025-10-09T00:00:00.000Z",
       "version": 1
     }
+  }
+  ```
+
+- 名前空間一覧取得：
+  ```json
+  {
+    "tool": "memory.list_namespaces",
+    "params": {
+      "namespace": "projects",
+      "depth": 2,
+      "limit": 100
+    }
+  }
+  ```
+  ```json
+  {
+    "baseNamespace": "legacy/DEF/projects",
+    "defaultNamespace": "legacy/DEF",
+    "rootNamespace": "legacy",
+    "depth": 2,
+    "count": 3,
+    "namespaces": [
+      "legacy/DEF/projects",
+      "legacy/DEF/projects/app",
+      "legacy/DEF/projects/app/backend"
+    ]
   }
   ```
 

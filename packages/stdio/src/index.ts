@@ -3,10 +3,13 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   deleteInputSchema,
+  listNamespacesInputSchema,
   saveInputSchema,
   searchInputSchema,
   type DeleteInput,
+  type ListNamespacesInput,
   type MemoryDeleteResponse,
+  type MemoryListNamespacesResponse,
   type MemoryEntry,
   type MemorySaveResponse,
   type MemorySearchResponse,
@@ -175,6 +178,32 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
       ]
     };
   });
+
+  server.registerTool("memory-list-namespaces", {
+    title: "List child namespaces",
+    description: "現在の基点からサブ名前空間を列挙します。",
+    inputSchema: listNamespacesInputSchema.shape
+  }, async (args: unknown) => {
+    const parsed = listNamespacesInputSchema.parse(args) as ListNamespacesInput;
+    const result = await bridge.invoke<MemoryListNamespacesResponse>("memory.list_namespaces", parsed);
+
+    const lines = result.namespaces.length
+      ? result.namespaces.map((ns) => `- ${ns}`).join("\n")
+      : "該当する名前空間は見つかりませんでした";
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: [
+            "📁 名前空間を一覧表示しました",
+            `基点: ${result.baseNamespace} (depth=${result.depth})`,
+            lines
+          ].join("\n\n")
+        }
+      ]
+    };
+  });
 }
 
 async function main(): Promise<void> {
@@ -187,7 +216,7 @@ async function main(): Promise<void> {
       tools: {}
     },
     instructions:
-      "memory-save / memory-search / memory-delete ツールでメモの保存・検索・削除ができます。環境変数でHTTPバックエンドのURLやヘッダーを設定してください。"
+      "memory-save / memory-search / memory-delete / memory-list-namespaces ツールでメモの保存・検索・削除・名前空間列挙ができます。環境変数でHTTPバックエンドのURLやヘッダーを設定してください。"
   });
 
   await registerTools(bridge, server);

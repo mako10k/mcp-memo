@@ -24,6 +24,7 @@ const configSchema = z.object({
     .transform((value) => value.replace(/\/$/, "")),
   bearerToken: z.string().min(1).optional(),
   headers: headersSchema.optional(),
+  namespaceDefault: z.string().min(1).optional(),
   timeoutMs: z
     .coerce.number()
     .int()
@@ -34,6 +35,7 @@ const configSchema = z.object({
 export interface MemoryBridgeConfig {
   baseUrl: string;
   headers: Record<string, string>;
+  namespaceDefault?: string;
   timeoutMs?: number;
 }
 
@@ -46,6 +48,7 @@ export function loadConfig(env: RawEnv = process.env): MemoryBridgeConfig {
     baseUrl: env.MEMORY_HTTP_URL ?? defaultBaseUrl,
     bearerToken: env.MEMORY_HTTP_BEARER_TOKEN,
     headers: env.MEMORY_HTTP_HEADERS,
+    namespaceDefault: env.MEMORY_NAMESPACE_DEFAULT,
     timeoutMs: env.MEMORY_HTTP_TIMEOUT_MS
   });
 
@@ -64,9 +67,14 @@ export function loadConfig(env: RawEnv = process.env): MemoryBridgeConfig {
     headers.Authorization = `Bearer ${parsed.bearerToken}`;
   }
 
+  if (parsed.namespaceDefault) {
+    headers["x-namespace-default"] = parsed.namespaceDefault;
+  }
+
   return {
     baseUrl: parsed.baseUrl,
     headers,
+    namespaceDefault: parsed.namespaceDefault,
     timeoutMs: parsed.timeoutMs
   };
 }
