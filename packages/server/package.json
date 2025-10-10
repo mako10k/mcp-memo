@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "wrangler dev --config wrangler.toml",
     "build": "wrangler deploy --dry-run --config wrangler.toml",
-    "test": "bun test"
+    "test": "bun test",
+    "create:api-key": "bun run src/scripts/createApiKey.ts"
   },
   "dependencies": {
     "@mcp/shared": "workspace:*",

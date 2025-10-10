@@ -88,7 +88,7 @@
    - `memory-list-namespaces` の挙動確認。
 5. **ドキュメント整備**
    - 新仕様を README / docs 各所に反映。
-   - API キー発行スクリプトと手順を追加。
+   - API キー発行スクリプトと手順を追加（`bun run --cwd packages/server create:api-key`）。
 
 ## 開発上の留意点
 - API キーはハッシュ化保存。平文は発行時のみ表示。

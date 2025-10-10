@@ -51,6 +51,26 @@ Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索�
   ```
   TLS の独自証明書を利用する場合は `NODE_EXTRA_CA_CERTS` / `BUN_CERT` に `certs/cloudflare-chain.pem` を指定してください。
 
+### API キーの発行
+
+`api_keys` テーブルに新しいキーを登録するときは、サーバーパッケージに用意したスクリプトを利用できます。ルート名前空間と、ルート配下に設定するデフォルト名前空間を指定してください。
+
+```bash
+bun run --cwd packages/server create:api-key \
+  --root acme \
+  --default acme/DEF
+```
+
+オプション:
+
+| フラグ | 説明 |
+| --- | --- |
+| `--owner <uuid>` | 既存ユーザの `owner_id` を指定。省略すると新しい UUID が採番されます。 |
+| `--status <active|revoked>` | 付与するキーのステータス。既定は `active`。 |
+| `--database-url <url>` | `DATABASE_URL` を上書き。環境変数を使う場合は不要です。 |
+
+スクリプトは挿入したレコード情報と平文 API キーを JSON で出力します。出力された `token` は一度しか表示されないため安全な場所に保管してください。
+
 ### CI（自動テスト）
 - GitHub Actions ワークフロー `.github/workflows/ci.yml` が push / pull request 時に自動実行されます。
 - 処理内容は Bun のセットアップ、依存解決、`bun test` の実行です。
@@ -165,3 +185,4 @@ Cloudflare 側の環境構築・証明書チェーンの取得方法を [`docs/c
 - `docs/deployment.md`：GitHub Actions を使った自動化と Cloudflare Workers へのデプロイ手順。
 - `docs/implementation-plan.md`：実装ロードマップと進捗メモ。
 - `docs/memory-mcp-spec.md`：全体アーキテクチャと詳細仕様。
+- `docs/api-keys.md`：API キーの発行と運用ガイド。
