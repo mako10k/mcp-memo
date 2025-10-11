@@ -111,7 +111,7 @@ function formatMemo(memo: MemoryEntry, score?: number | null): string {
 async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promise<void> {
   server.registerTool("memory-save", {
     title: "Save memory entry",
-    description: "指定した namespace にメモを保存します。新規作成では memoId を省略してください（自動生成されます）。既存IDを指定すると上書きします。",
+    description: "Save a memo into the specified namespace. Omit memoId when creating a memo (it will be generated automatically). Provide an existing memoId only when overwriting a memo.",
     inputSchema: saveInputSchema.shape
   }, async (args: unknown) => {
     const parsed = saveInputSchema.parse(args) as SaveInput;
@@ -121,7 +121,7 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
         {
           type: "text",
           text: [
-            "✅ メモを保存しました",
+            "✅ Saved memo",
             formatMemo(result.memo)
           ].join("\n\n")
         }
@@ -131,7 +131,7 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
 
   server.registerTool("memory-search", {
     title: "Search memory entries",
-    description: "指定した namespace でメモを検索します。全文検索とメタデータ検索に対応します。",
+  description: "Search for memos within the specified namespace. Supports full-text and metadata filters.",
     inputSchema: searchInputSchema.shape
   }, async (args: unknown) => {
     const parsed = searchInputSchema.parse(args) as SearchInput;
@@ -139,14 +139,14 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
 
     const lines = result.items.length
       ? result.items.map((item, index) => `#${index + 1}\n${formatMemo(item, item.score)}`).join("\n\n")
-      : "該当するメモは見つかりませんでした";
+  : "No matching memos were found.";
 
     return {
       content: [
         {
           type: "text",
           text: [
-            `🔍 メモを検索しました (件数: ${result.count})`,
+            `🔍 Search completed (count: ${result.count})`,
             lines
           ].join("\n\n")
         }
@@ -156,7 +156,7 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
 
   server.registerTool("memory-delete", {
     title: "Delete memory entry",
-    description: "指定した namespace からメモを削除します。",
+  description: "Delete a memo from the specified namespace.",
     inputSchema: deleteInputSchema.shape
   }, async (args: unknown) => {
     const parsed = deleteInputSchema.parse(args) as DeleteInput;
@@ -168,12 +168,12 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
           type: "text",
           text: result.deleted
             ? [
-                "🗑️ メモを削除しました",
+                "🗑️ Deleted memo",
                 result.memo ? formatMemo(result.memo) : undefined
               ]
                 .filter(Boolean)
                 .join("\n\n")
-            : "指定されたメモは見つかりませんでした"
+            : "The requested memo was not found."
         }
       ]
     };
@@ -181,7 +181,7 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
 
   server.registerTool("memory-list-namespaces", {
     title: "List child namespaces",
-    description: "現在の基点からサブ名前空間を列挙します。",
+  description: "List child namespaces relative to the current base namespace.",
     inputSchema: listNamespacesInputSchema.shape
   }, async (args: unknown) => {
     const parsed = listNamespacesInputSchema.parse(args) as ListNamespacesInput;
@@ -189,15 +189,15 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
 
     const lines = result.namespaces.length
       ? result.namespaces.map((ns) => `- ${ns}`).join("\n")
-      : "該当する名前空間は見つかりませんでした";
+  : "No namespaces were found.";
 
     return {
       content: [
         {
           type: "text",
           text: [
-            "📁 名前空間を一覧表示しました",
-            `基点: ${result.baseNamespace} (depth=${result.depth})`,
+            "📁 Namespace listing",
+            `Base: ${result.baseNamespace} (depth=${result.depth})`,
             lines
           ].join("\n\n")
         }
@@ -216,7 +216,7 @@ async function main(): Promise<void> {
       tools: {}
     },
     instructions:
-      "memory-save / memory-search / memory-delete / memory-list-namespaces ツールでメモの保存・検索・削除・名前空間列挙ができます。環境変数でHTTPバックエンドのURLやヘッダーを設定してください。"
+      "Use memory-save / memory-search / memory-delete / memory-list-namespaces to store, search, delete, and list namespaces. Configure the HTTP backend URL and headers via environment variables."
   });
 
   await registerTools(bridge, server);

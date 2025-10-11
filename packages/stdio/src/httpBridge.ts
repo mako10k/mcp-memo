@@ -24,7 +24,7 @@ export class MemoryHttpBridge {
       try {
         json = text.length ? JSON.parse(text) : {};
       } catch (error) {
-        throw new Error(`バックエンドからのJSON解析に失敗しました: ${(error as Error).message}\n${text}`);
+        throw new Error(`Failed to parse JSON from backend response: ${(error as Error).message}\n${text}`);
       }
 
       if (!response.ok) {
@@ -47,15 +47,15 @@ export class MemoryHttpBridge {
           detailLines.push(text);
         }
 
-        const detailSection = detailLines.length ? `\n詳細:\n${detailLines.join("\n")}` : "";
+  const detailSection = detailLines.length ? `\nDetails:\n${detailLines.join("\n")}` : "";
         const fallback = message ?? (text || "Unknown error");
-        throw new Error(`バックエンドがエラーを返しました (status=${response.status}): ${fallback}${detailSection}`.trim());
+  throw new Error(`Backend returned an error (status=${response.status}): ${fallback}${detailSection}`.trim());
       }
 
       return json as TResponse;
     } catch (error) {
       if ((error as Error).name === "AbortError") {
-        throw new Error("バックエンドへのリクエストがタイムアウトしました");
+        throw new Error("Request to backend timed out");
       }
       throw error;
     } finally {
