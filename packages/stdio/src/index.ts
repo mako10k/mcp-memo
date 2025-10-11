@@ -13,7 +13,6 @@ import {
   type MemoryEntry,
   type MemorySaveResponse,
   type MemorySearchResponse,
-  type MemoMetadata,
   type SaveInput,
   type SearchInput
 } from "./memorySchemas";
@@ -84,28 +83,32 @@ function parseCliArgs(argv: string[]): Record<string, string> {
   return overrides;
 }
 
-function formatMetadata(metadata: MemoMetadata | undefined): string {
-  if (!metadata) return "{}";
-  try {
-    return JSON.stringify(metadata, null, 2);
-  } catch {
-    return String(metadata);
+function stripRootNamespace(namespace: string, rootHint?: string): string {
+  const segments = namespace.split("/").filter((segment) => segment.length > 0);
+  if (!segments.length) return "";
+
+  if (rootHint) {
+    const rootSegments = rootHint.split("/").filter((segment) => segment.length > 0);
+    const matchesRoot = rootSegments.every((segment, index) => segments[index] === segment);
+    if (matchesRoot && segments.length >= rootSegments.length) {
+      const trimmed = segments.slice(rootSegments.length).join("/");
+      return trimmed;
+    }
   }
+
+  const trimmed = segments.slice(1).join("/");
+  return trimmed;
 }
 
-function formatMemo(memo: MemoryEntry, score?: number | null): string {
-  const header = memo.title ? `${memo.title} (${memo.memoId})` : memo.memoId;
-  const scoreLabel = typeof score === "number" ? ` score=${score.toFixed(3)}` : score ? ` score=${score}` : "";
-  const metadata = formatMetadata(memo.metadata);
-  return [
-    `${header}${scoreLabel}`.trim(),
-    `Namespace: ${memo.namespace}`,
-    `Content: ${memo.content}`,
-    `Metadata: ${metadata}`,
-    `Updated: ${memo.updatedAt}`
-  ]
-    .filter(Boolean)
-    .join("\n");
+function memoToPayload(memo: MemoryEntry, rootHint?: string, score?: number | null) {
+  return {
+    id: memo.memoId,
+    namespace: stripRootNamespace(memo.namespace, rootHint),
+    createdAt: memo.createdAt,
+    updatedAt: memo.updatedAt,
+    version: memo.version,
+    ...(typeof score === "number" ? { score } : {})
+  };
 }
 
 async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promise<void> {
@@ -116,14 +119,15 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
   }, async (args: unknown) => {
     const parsed = saveInputSchema.parse(args) as SaveInput;
     const result = await bridge.invoke<MemorySaveResponse>("memory.save", parsed);
+    const payload = {
+      status: "ok",
+      memo: memoToPayload(result.memo, result.rootNamespace)
+    };
     return {
       content: [
         {
           type: "text",
-          text: [
-            "✅ Saved memo",
-            formatMemo(result.memo)
-          ].join("\n\n")
+          text: JSON.stringify(payload)
         }
       ]
     };
@@ -136,19 +140,17 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
   }, async (args: unknown) => {
     const parsed = searchInputSchema.parse(args) as SearchInput;
     const result = await bridge.invoke<MemorySearchResponse>("memory.search", parsed);
-
-    const lines = result.items.length
-      ? result.items.map((item, index) => `#${index + 1}\n${formatMemo(item, item.score)}`).join("\n\n")
-  : "No matching memos were found.";
+    const payload = {
+      status: "ok",
+      count: result.count,
+      items: result.items.map((item) => memoToPayload(item, result.rootNamespace, item.score ?? undefined))
+    };
 
     return {
       content: [
         {
           type: "text",
-          text: [
-            `🔍 Search completed (count: ${result.count})`,
-            lines
-          ].join("\n\n")
+          text: JSON.stringify(payload)
         }
       ]
     };
@@ -161,19 +163,17 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
   }, async (args: unknown) => {
     const parsed = deleteInputSchema.parse(args) as DeleteInput;
     const result = await bridge.invoke<MemoryDeleteResponse>("memory.delete", parsed);
+    const payload = {
+      status: "ok",
+      deleted: result.deleted,
+      memo: result.memo ? memoToPayload(result.memo, result.rootNamespace) : undefined
+    };
 
     return {
       content: [
         {
           type: "text",
-          text: result.deleted
-            ? [
-                "🗑️ Deleted memo",
-                result.memo ? formatMemo(result.memo) : undefined
-              ]
-                .filter(Boolean)
-                .join("\n\n")
-            : "The requested memo was not found."
+          text: JSON.stringify(payload)
         }
       ]
     };
@@ -186,20 +186,19 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
   }, async (args: unknown) => {
     const parsed = listNamespacesInputSchema.parse(args) as ListNamespacesInput;
     const result = await bridge.invoke<MemoryListNamespacesResponse>("memory.list_namespaces", parsed);
-
-    const lines = result.namespaces.length
-      ? result.namespaces.map((ns) => `- ${ns}`).join("\n")
-  : "No namespaces were found.";
+    const payload = {
+      status: "ok",
+      baseNamespace: stripRootNamespace(result.baseNamespace, result.rootNamespace),
+      depth: result.depth,
+      count: result.count,
+      namespaces: result.namespaces.map((ns) => stripRootNamespace(ns, result.rootNamespace))
+    };
 
     return {
       content: [
         {
           type: "text",
-          text: [
-            "📁 Namespace listing",
-            `Base: ${result.baseNamespace} (depth=${result.depth})`,
-            lines
-          ].join("\n\n")
+          text: JSON.stringify(payload)
         }
       ]
     };

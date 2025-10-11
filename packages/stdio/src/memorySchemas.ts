@@ -19,16 +19,19 @@ export interface MemorySearchResult extends MemoryEntry {
 
 export interface MemorySaveResponse {
   memo: MemoryEntry;
+  rootNamespace: string;
 }
 
 export interface MemorySearchResponse {
   items: MemorySearchResult[];
   count: number;
+  rootNamespace: string;
 }
 
 export interface MemoryDeleteResponse {
   deleted: boolean;
   memo?: MemoryEntry;
+  rootNamespace: string;
 }
 
 export interface MemoryListNamespacesResponse {

@@ -80,7 +80,7 @@ export async function handleInvocation(
         embedding: embeddingVector
       });
 
-      const payload: MemorySaveResponse = { memo };
+  const payload: MemorySaveResponse = { memo, rootNamespace: context.rootNamespace };
       return jsonResponse(payload, 200);
     }
     case "memory.search": {
@@ -115,7 +115,8 @@ export async function handleInvocation(
 
       const payload: MemorySearchResponse = {
         items,
-        count: items.length
+        count: items.length,
+        rootNamespace: context.rootNamespace
       };
       return jsonResponse(payload, 200);
     }
@@ -137,7 +138,7 @@ export async function handleInvocation(
       if (!deleted) {
         return jsonResponse({ message: "Memo not found" }, 404);
       }
-      const payload: MemoryDeleteResponse = { deleted: true, memo: deleted };
+  const payload: MemoryDeleteResponse = { deleted: true, memo: deleted, rootNamespace: context.rootNamespace };
       return jsonResponse(payload, 200);
     }
     case "memory.list_namespaces": {

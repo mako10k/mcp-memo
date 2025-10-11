@@ -3,7 +3,12 @@ import { describe, expect, it } from "bun:test";
 import { handleInvocation, type RequestContext } from "./index";
 import type { EnvVars } from "./env";
 import type { MemoryStore, SearchResult } from "./db";
-import type { MemoryEntry, MemoryListNamespacesResponse } from "@mcp/shared";
+import type {
+  MemoryEntry,
+  MemoryListNamespacesResponse,
+  MemorySaveResponse,
+  MemorySearchResponse
+} from "@mcp/shared";
 
 const envStub: EnvVars = {
   DATABASE_URL: "postgresql://user:pass@localhost/db",
@@ -79,8 +84,9 @@ describe("handleInvocation", () => {
     );
 
     expect(response.status).toBe(200);
-    const json = (await response.json()) as { memo: MemoryEntry };
-    expect(json.memo.namespace).toBe("legacy/DEF/default");
+    const json = (await response.json()) as MemorySaveResponse;
+  expect(json.memo.namespace).toBe("legacy/DEF/default");
+  expect(json.rootNamespace).toBe(contextStub.rootNamespace);
   });
 
   it("supports override default namespace from request options", async () => {
@@ -113,10 +119,11 @@ describe("handleInvocation", () => {
     );
 
     expect(response.status).toBe(200);
-    const json = (await response.json()) as { items: SearchResult[] };
-    expect(json.items).toHaveLength(1);
-    expect(json.items[0].score).toBeCloseTo(0.8);
-    expect(json.items[0].namespace).toBe("legacy/projects/inbox");
+    const json = (await response.json()) as MemorySearchResponse;
+  expect(json.items).toHaveLength(1);
+  expect(json.items[0].score).toBeCloseTo(0.8);
+  expect(json.items[0].namespace).toBe("legacy/projects/inbox");
+  expect(json.rootNamespace).toBe(contextStub.rootNamespace);
   });
 
   it("returns 404 when deleting missing memo", async () => {
@@ -136,7 +143,7 @@ describe("handleInvocation", () => {
       }
     );
 
-    expect(response.status).toBe(404);
+  expect(response.status).toBe(404);
   });
 
   it("lists namespaces with depth limit", async () => {
@@ -170,6 +177,23 @@ describe("handleInvocation", () => {
     expect(json.namespaces[0]).toBe("legacy/DEF/projects");
     expect(json.namespaces[1]).toBe("legacy/DEF/projects/app");
     expect(json.namespaces[2]).toBe("legacy/DEF/projects/app/backend");
+  });
+
+  it("rejects namespace escaping root", async () => {
+    const response = await handleInvocation(
+      { tool: "memory.save", params: { namespace: "../../outside", content: "oops" } },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub()
+      }
+    );
+
+    expect(response.status).toBe(400);
+    const json = (await response.json()) as { message: string; detail?: string };
+    expect(json.message).toBe("Invalid namespace");
+    expect(json.detail?.includes("escaped root scope")).toBe(true);
   });
 
   it("rejects unsupported tool", async () => {
