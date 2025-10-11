@@ -11,7 +11,7 @@ export const saveInputSchema = z.object({
   namespace: z.string().min(1),
   content: z.string().min(1),
   metadata: metadataSchema.optional(),
-  memoId: z.string().min(1).optional(),
+  memoId: z.string().uuid().optional(),
   title: z.string().min(1).optional()
 });
 
@@ -25,7 +25,7 @@ export const searchInputSchema = z.object({
 
 export const deleteInputSchema = z.object({
   namespace: z.string().min(1),
-  memoId: z.string().min(1)
+  memoId: z.string().uuid()
 });
 
 export const listNamespacesInputSchema = z.object({

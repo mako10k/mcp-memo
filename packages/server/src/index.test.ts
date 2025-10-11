@@ -19,9 +19,13 @@ const contextStub: RequestContext = {
 
 const makeVector = (value: number) => Array(1536).fill(value);
 
+const memoIdA = "00000000-0000-0000-0000-0000000000a1";
+const memoIdB = "00000000-0000-0000-0000-0000000000b2";
+const missingMemoId = "00000000-0000-0000-0000-0000000000ff";
+
 function createStoreStub(overrides: Partial<MemoryStore> = {}): MemoryStore {
   const defaultMemo: MemoryEntry = {
-    memoId: "memo-1",
+  memoId: memoIdA,
     namespace: "legacy/DEF/default",
     content: "Hello world",
     metadata: {},
@@ -60,7 +64,7 @@ describe("handleInvocation", () => {
             expect(params.ownerId).toBe(contextStub.ownerId);
             expect(params.namespace).toBe("legacy/DEF/default");
             return {
-              memoId: params.memoId ?? "memo-1",
+              memoId: params.memoId ?? memoIdA,
               namespace: params.namespace,
               content: params.content,
               metadata: params.metadataPatch ?? {},
@@ -92,7 +96,7 @@ describe("handleInvocation", () => {
             expect(params.namespace).toBe("legacy/projects/inbox");
             return [
               {
-                memoId: "memo-2",
+                memoId: memoIdB,
                 namespace: params.namespace,
                 content: "Hi",
                 metadata: {},
@@ -117,7 +121,7 @@ describe("handleInvocation", () => {
 
   it("returns 404 when deleting missing memo", async () => {
     const response = await handleInvocation(
-      { tool: "memory.delete", params: { namespace: "archive", memoId: "missing" } },
+  { tool: "memory.delete", params: { namespace: "archive", memoId: missingMemoId } },
       envStub,
       contextStub,
       {

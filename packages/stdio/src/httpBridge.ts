@@ -28,9 +28,28 @@ export class MemoryHttpBridge {
       }
 
       if (!response.ok) {
-        const message = typeof json === "object" && json && "message" in json ? (json as Record<string, unknown>).message : undefined;
+        const payload = (typeof json === "object" && json) ? (json as Record<string, unknown>) : undefined;
+        const message = payload && typeof payload.message === "string" ? payload.message : undefined;
+        const detailLines: string[] = [];
+
+        if (payload) {
+          if (typeof payload.detail === "string" && payload.detail.trim().length) {
+            detailLines.push(payload.detail.trim());
+          }
+
+          if (Array.isArray(payload.issues) && payload.issues.length) {
+            const serialized = JSON.stringify(payload.issues, null, 2);
+            detailLines.push(`issues: ${serialized}`);
+          }
+        }
+
+        if (!message && detailLines.length === 0 && text) {
+          detailLines.push(text);
+        }
+
+        const detailSection = detailLines.length ? `\n詳細:\n${detailLines.join("\n")}` : "";
         const fallback = message ?? (text || "Unknown error");
-        throw new Error(`バックエンドがエラーを返しました (status=${response.status}): ${fallback}`);
+        throw new Error(`バックエンドがエラーを返しました (status=${response.status}): ${fallback}${detailSection}`.trim());
       }
 
       return json as TResponse;
