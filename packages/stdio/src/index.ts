@@ -111,7 +111,7 @@ function formatMemo(memo: MemoryEntry, score?: number | null): string {
 async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promise<void> {
   server.registerTool("memory-save", {
     title: "Save memory entry",
-    description: "指定した namespace にメモを保存します。既存IDを指定すると上書きします。",
+    description: "指定した namespace にメモを保存します。新規作成では memoId を省略してください（自動生成されます）。既存IDを指定すると上書きします。",
     inputSchema: saveInputSchema.shape
   }, async (args: unknown) => {
     const parsed = saveInputSchema.parse(args) as SaveInput;

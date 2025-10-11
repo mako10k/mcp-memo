@@ -130,12 +130,12 @@ Cloudflare 側の環境構築・証明書チェーンの取得方法を [`docs/c
     "tool": "memory.save",
     "params": {
       "namespace": "default",
-      "memoId": "...",
       "content": "...",
       "metadata": { "topic": "demo" }
     }
   }
   ```
+  - `memoId` はレスポンスで返る UUID です。新規作成時は省略し、既存メモを上書きしたい場合のみリクエストに含めてください。
 - レスポンス例：
   ```json
   {
