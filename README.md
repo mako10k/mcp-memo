@@ -7,6 +7,8 @@ Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索�
 - `memory-search`：ベクトル類似度検索＋メタデータフィルタ。
 - `memory-delete`：名前空間 + memo ID で削除。
 - `memory-list-namespaces`：ルート/デフォルトを基点にサブ名前空間を列挙。
+- `memory-relation-save`：2 つのメモ間にタグ付きリレーションを保存し、重み・理由を記録。
+- `memory-relation-delete` / `memory-relation-list`：リレーションの削除・列挙（グラフ構造出力）。
 - すべてのハンドラが MCP ツール呼び出し形式（`{ tool, params }` JSON）に対応。
 
 ## 必要環境
@@ -24,6 +26,7 @@ Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索�
   ```sql
   \i packages/server/migrations/001_init.sql
   \i packages/server/migrations/002_namespace_hierarchy.sql
+    \i packages/server/migrations/003_memory_relations.sql
   ```
 3. Cloudflare Workers のシークレットを登録（wrangler）
    ```bash
@@ -173,6 +176,73 @@ Cloudflare 側の環境構築・証明書チェーンの取得方法を [`docs/c
       "legacy/DEF/projects",
       "legacy/DEF/projects/app",
       "legacy/DEF/projects/app/backend"
+    ]
+  }
+  ```
+
+- リレーション保存：
+  ```json
+  {
+    "tool": "memory.relation.save",
+    "params": {
+      "namespace": "projects/alpha",
+      "sourceMemoId": "...",
+      "targetMemoId": "...",
+      "tag": "supports",
+      "weight": 0.8,
+      "reason": "Design document backs the implementation detail"
+    }
+  }
+  ```
+  ```json
+  {
+    "relation": {
+      "namespace": "legacy/DEF/projects/alpha",
+      "sourceMemoId": "...",
+      "targetMemoId": "...",
+      "tag": "supports",
+      "weight": 0.8,
+      "reason": "Design document backs the implementation detail",
+      "createdAt": "2025-10-12T00:00:00.000Z",
+      "updatedAt": "2025-10-12T00:00:00.000Z",
+      "version": 1
+    },
+    "rootNamespace": "legacy"
+  }
+  ```
+
+- リレーション一覧：
+  ```json
+  {
+    "tool": "memory.relation.list",
+    "params": {
+      "namespace": "projects/alpha",
+      "sourceMemoId": "...",
+      "limit": 50
+    }
+  }
+  ```
+  ```json
+  {
+    "namespace": "legacy/DEF/projects/alpha",
+    "rootNamespace": "legacy",
+    "count": 1,
+    "edges": [
+      {
+        "namespace": "legacy/DEF/projects/alpha",
+        "sourceMemoId": "...",
+        "targetMemoId": "...",
+        "tag": "supports",
+        "weight": 0.8,
+        "reason": "Design document backs the implementation detail",
+        "createdAt": "2025-10-12T00:00:00.000Z",
+        "updatedAt": "2025-10-12T00:00:00.000Z",
+        "version": 1
+      }
+    ],
+    "nodes": [
+      { "memoId": "...", "namespace": "legacy/DEF/projects/alpha", "title": "Design" },
+      { "memoId": "...", "namespace": "legacy/DEF/projects/alpha", "title": "Implementation" }
     ]
   }
   ```

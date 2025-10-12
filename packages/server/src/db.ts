@@ -1,5 +1,5 @@
 import { neon, neonConfig } from "@neondatabase/serverless";
-import type { MemoMetadata, MemoryEntry } from "@mcp/shared";
+import type { MemoMetadata, MemoryEntry, RelationEntry, RelationNode } from "@mcp/shared";
 
 import type { EnvVars } from "./env";
 
@@ -21,6 +21,24 @@ interface MemoryRow {
 
 interface NamespaceRow {
   namespace: string;
+}
+
+interface RelationRow {
+  namespace: string;
+  source_memo_id: string;
+  target_memo_id: string;
+  tag: string;
+  weight: string | number;
+  reason: string | null;
+  created_at: string;
+  updated_at: string;
+  version: number;
+}
+
+interface RelationNodeRow {
+  id: string;
+  namespace: string;
+  title: string | null;
 }
 
 export interface UpsertParams {
@@ -55,6 +73,38 @@ export interface ListNamespacesParams {
   limit: number;
 }
 
+export interface RelationUpsertParams {
+  ownerId: string;
+  namespace: string;
+  sourceMemoId: string;
+  targetMemoId: string;
+  tag: string;
+  weight: number;
+  reason?: string;
+}
+
+export interface RelationDeleteParams {
+  ownerId: string;
+  namespace: string;
+  sourceMemoId: string;
+  targetMemoId: string;
+  tag: string;
+}
+
+export interface RelationListParams {
+  ownerId: string;
+  namespace: string;
+  sourceMemoId?: string;
+  targetMemoId?: string;
+  tag?: string;
+  limit: number;
+}
+
+export interface RelationListResult {
+  edges: RelationEntry[];
+  nodes: RelationNode[];
+}
+
 export interface SearchResult extends MemoryEntry {
   score: number | null;
 }
@@ -64,6 +114,9 @@ export interface MemoryStore {
   search(params: SearchParams): Promise<SearchResult[]>;
   delete(params: DeleteParams): Promise<MemoryEntry | null>;
   listNamespaces(params: ListNamespacesParams): Promise<string[]>;
+  upsertRelation(params: RelationUpsertParams): Promise<RelationEntry>;
+  deleteRelation(params: RelationDeleteParams): Promise<RelationEntry | null>;
+  listRelations(params: RelationListParams): Promise<RelationListResult>;
 }
 
 function toVectorLiteral(vector: number[]): string {
@@ -90,6 +143,28 @@ function mapRow(row: MemoryRow): MemoryEntry {
     updatedAt: row.updated_at,
     version: row.version
   };
+}
+
+function mapRelationRow(row: RelationRow): RelationEntry {
+  return {
+    namespace: row.namespace,
+    sourceMemoId: row.source_memo_id,
+    targetMemoId: row.target_memo_id,
+    tag: row.tag,
+    weight: typeof row.weight === "number" ? row.weight : Number.parseFloat(row.weight),
+    reason: row.reason ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    version: row.version
+  } satisfies RelationEntry;
+}
+
+function mapRelationNodeRow(row: RelationNodeRow): RelationNode {
+  return {
+    memoId: row.id,
+    namespace: row.namespace,
+    title: row.title ?? undefined
+  } satisfies RelationNode;
 }
 
 function splitNamespace(value: string): string[] {
@@ -243,6 +318,111 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
       }
 
       return Array.from(namespaces).sort();
+    },
+
+    async upsertRelation(params: RelationUpsertParams): Promise<RelationEntry> {
+      const query = `
+        INSERT INTO memory_relations (owner_id, namespace, source_memo_id, target_memo_id, tag, weight, reason, created_at, updated_at, version)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), 1)
+        ON CONFLICT (owner_id, namespace, source_memo_id, target_memo_id, tag) DO UPDATE
+        SET
+          weight = EXCLUDED.weight,
+          reason = EXCLUDED.reason,
+          updated_at = NOW(),
+          version = memory_relations.version + 1
+        RETURNING namespace, source_memo_id, target_memo_id, tag, weight, reason, created_at, updated_at, version;
+      `;
+
+      const rows = (await sql(query, [
+        params.ownerId,
+        params.namespace,
+        params.sourceMemoId,
+        params.targetMemoId,
+        params.tag,
+        params.weight,
+        params.reason ?? null
+      ])) as RelationRow[];
+
+      if (!rows.length) {
+        throw new Error("Failed to upsert memory relation");
+      }
+
+      return mapRelationRow(rows[0]);
+    },
+
+    async deleteRelation(params: RelationDeleteParams): Promise<RelationEntry | null> {
+      const query = `
+        DELETE FROM memory_relations
+        WHERE owner_id = $1 AND namespace = $2 AND source_memo_id = $3 AND target_memo_id = $4 AND tag = $5
+        RETURNING namespace, source_memo_id, target_memo_id, tag, weight, reason, created_at, updated_at, version;
+      `;
+
+      const rows = (await sql(query, [
+        params.ownerId,
+        params.namespace,
+        params.sourceMemoId,
+        params.targetMemoId,
+        params.tag
+      ])) as RelationRow[];
+
+      if (!rows.length) {
+        return null;
+      }
+
+      return mapRelationRow(rows[0]);
+    },
+
+    async listRelations(params: RelationListParams): Promise<RelationListResult> {
+      const conditions: string[] = ["owner_id = $1", "namespace = $2"];
+      const values: unknown[] = [params.ownerId, params.namespace];
+
+      if (params.sourceMemoId) {
+        values.push(params.sourceMemoId);
+        conditions.push(`source_memo_id = $${values.length}`);
+      }
+
+      if (params.targetMemoId) {
+        values.push(params.targetMemoId);
+        conditions.push(`target_memo_id = $${values.length}`);
+      }
+
+      if (params.tag) {
+        values.push(params.tag);
+        conditions.push(`tag = $${values.length}`);
+      }
+
+      values.push(params.limit);
+      const limitParamIndex = values.length;
+
+      const relationQuery = `
+        SELECT namespace, source_memo_id, target_memo_id, tag, weight, reason, created_at, updated_at, version
+        FROM memory_relations
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY updated_at DESC
+        LIMIT $${limitParamIndex};
+      `;
+
+      const relationRows = (await sql(relationQuery, values)) as RelationRow[];
+      const edges = relationRows.map(mapRelationRow);
+
+      if (edges.length === 0) {
+        return { edges: [], nodes: [] } satisfies RelationListResult;
+      }
+
+      const memoIds = Array.from(
+        new Set(edges.flatMap((edge) => [edge.sourceMemoId, edge.targetMemoId]))
+      );
+
+      const nodesQuery = `
+        SELECT id, namespace, title
+        FROM memory_entries
+        WHERE owner_id = $1 AND namespace = $2 AND id = ANY($3::uuid[]);
+      `;
+
+      const nodeRows = (await sql(nodesQuery, [params.ownerId, params.namespace, memoIds])) as RelationNodeRow[];
+      const nodes = nodeRows.map(mapRelationNodeRow);
+
+      return { edges, nodes } satisfies RelationListResult;
     }
   };
 }

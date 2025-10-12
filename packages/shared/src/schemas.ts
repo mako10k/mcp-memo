@@ -7,6 +7,33 @@ const metadataValueSchema: z.ZodType<unknown> = z.lazy(() =>
 
 export const metadataSchema = z.record(metadataValueSchema);
 
+const relationTagSchema = z.string().min(1).max(64);
+const relationWeightSchema = z.coerce.number().min(0).max(1);
+
+export const relationSaveInputSchema = z.object({
+  namespace: z.string().min(1).optional(),
+  sourceMemoId: z.string().uuid(),
+  targetMemoId: z.string().uuid(),
+  tag: relationTagSchema,
+  weight: relationWeightSchema,
+  reason: z.string().min(1).optional()
+});
+
+export const relationDeleteInputSchema = z.object({
+  namespace: z.string().min(1).optional(),
+  sourceMemoId: z.string().uuid(),
+  targetMemoId: z.string().uuid(),
+  tag: relationTagSchema
+});
+
+export const relationListInputSchema = z.object({
+  namespace: z.string().min(1).optional(),
+  sourceMemoId: z.string().uuid().optional(),
+  targetMemoId: z.string().uuid().optional(),
+  tag: relationTagSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100)
+});
+
 export const saveInputSchema = z.object({
   namespace: z.string().min(1),
   content: z.string().min(1),
@@ -35,7 +62,15 @@ export const listNamespacesInputSchema = z.object({
 });
 
 export const toolInvocationSchema = z.object({
-  tool: z.enum(["memory.save", "memory.search", "memory.delete", "memory.list_namespaces"]),
+  tool: z.enum([
+    "memory.save",
+    "memory.search",
+    "memory.delete",
+    "memory.list_namespaces",
+    "memory.relation.save",
+    "memory.relation.delete",
+    "memory.relation.list"
+  ]),
   params: z.unknown().optional()
 });
 
@@ -43,4 +78,7 @@ export type SaveInput = z.infer<typeof saveInputSchema>;
 export type SearchInput = z.infer<typeof searchInputSchema>;
 export type DeleteInput = z.infer<typeof deleteInputSchema>;
 export type ListNamespacesInput = z.infer<typeof listNamespacesInputSchema>;
+export type RelationSaveInput = z.infer<typeof relationSaveInputSchema>;
+export type RelationDeleteInput = z.infer<typeof relationDeleteInputSchema>;
+export type RelationListInput = z.infer<typeof relationListInputSchema>;
 export type ToolInvocation = z.infer<typeof toolInvocationSchema>;

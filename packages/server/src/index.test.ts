@@ -2,12 +2,14 @@ import { describe, expect, it } from "bun:test";
 
 import { handleInvocation, type RequestContext } from "./index";
 import type { EnvVars } from "./env";
-import type { MemoryStore, SearchResult } from "./db";
+import type { MemoryStore, RelationListResult, SearchResult } from "./db";
 import type {
   MemoryEntry,
   MemoryListNamespacesResponse,
   MemorySaveResponse,
-  MemorySearchResponse
+  MemorySearchResponse,
+  RelationListResponse,
+  RelationSaveResponse
 } from "@mcp/shared";
 
 const envStub: EnvVars = {
@@ -48,11 +50,41 @@ function createStoreStub(overrides: Partial<MemoryStore> = {}): MemoryStore {
 
   const defaultNamespaces = ["legacy/DEF", "legacy/DEF/default"];
 
+  const defaultRelation = {
+    namespace: "legacy/DEF/default",
+    sourceMemoId: memoIdA,
+    targetMemoId: memoIdB,
+    tag: "supports",
+    weight: 0.5,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    version: 1
+  } satisfies RelationSaveResponse["relation"];
+
+  const defaultRelationList: RelationListResult = {
+    edges: [defaultRelation],
+    nodes: [
+      {
+        memoId: memoIdA,
+        namespace: "legacy/DEF/default",
+        title: "Memo A"
+      },
+      {
+        memoId: memoIdB,
+        namespace: "legacy/DEF/default",
+        title: "Memo B"
+      }
+    ]
+  };
+
   return {
     upsert: overrides.upsert ?? (async () => defaultMemo),
     search: overrides.search ?? (async () => defaultSearch),
     delete: overrides.delete ?? (async () => defaultMemo),
-    listNamespaces: overrides.listNamespaces ?? (async () => defaultNamespaces)
+    listNamespaces: overrides.listNamespaces ?? (async () => defaultNamespaces),
+    upsertRelation: overrides.upsertRelation ?? (async () => defaultRelation),
+    deleteRelation: overrides.deleteRelation ?? (async () => defaultRelation),
+    listRelations: overrides.listRelations ?? (async () => defaultRelationList)
   } satisfies MemoryStore;
 }
 
@@ -208,5 +240,138 @@ describe("handleInvocation", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  it("saves memory relation", async () => {
+    const response = await handleInvocation(
+      {
+        tool: "memory.relation.save",
+        params: {
+          namespace: "default",
+          sourceMemoId: memoIdA,
+          targetMemoId: memoIdB,
+          tag: "supports",
+          weight: 0.9,
+          reason: "Memo A supports memo B"
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async upsertRelation(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
+            expect(params.namespace).toBe("legacy/DEF/default");
+            expect(params.tag).toBe("supports");
+            expect(params.weight).toBeCloseTo(0.9);
+            expect(params.reason).toBe("Memo A supports memo B");
+            return {
+              namespace: params.namespace,
+              sourceMemoId: params.sourceMemoId,
+              targetMemoId: params.targetMemoId,
+              tag: params.tag,
+              weight: params.weight,
+              reason: params.reason,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              version: 1
+            } satisfies RelationSaveResponse["relation"]; 
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as RelationSaveResponse;
+    expect(json.relation.namespace).toBe("legacy/DEF/default");
+    expect(json.rootNamespace).toBe(contextStub.rootNamespace);
+  });
+
+  it("deletes missing relation with 404", async () => {
+    const response = await handleInvocation(
+      {
+        tool: "memory.relation.delete",
+        params: {
+          namespace: "default",
+          sourceMemoId: memoIdA,
+          targetMemoId: memoIdB,
+          tag: "supports"
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async deleteRelation() {
+            return null;
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(404);
+    const json = (await response.json()) as { message: string };
+    expect(json.message).toBe("Relation not found");
+  });
+
+  it("lists relations", async () => {
+    const response = await handleInvocation(
+      {
+        tool: "memory.relation.list",
+        params: {
+          namespace: "default",
+          sourceMemoId: memoIdA,
+          limit: 50
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async listRelations(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
+            expect(params.namespace).toBe("legacy/DEF/default");
+            expect(params.sourceMemoId).toBe(memoIdA);
+            return {
+              edges: [
+                {
+                  namespace: "legacy/DEF/default",
+                  sourceMemoId: memoIdA,
+                  targetMemoId: memoIdB,
+                  tag: "supports",
+                  weight: 0.7,
+                  reason: "Memo A supports B",
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  version: 2
+                }
+              ],
+              nodes: [
+                {
+                  memoId: memoIdA,
+                  namespace: "legacy/DEF/default",
+                  title: "Memo A"
+                },
+                {
+                  memoId: memoIdB,
+                  namespace: "legacy/DEF/default",
+                  title: "Memo B"
+                }
+              ]
+            } satisfies RelationListResult;
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as RelationListResponse;
+    expect(json.namespace).toBe("legacy/DEF/default");
+    expect(json.count).toBe(1);
+    expect(json.edges[0].tag).toBe("supports");
+    expect(json.nodes).toHaveLength(2);
   });
 });

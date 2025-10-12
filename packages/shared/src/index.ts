@@ -42,4 +42,41 @@ export interface MemoryListNamespacesResponse {
   namespaces: string[];
 }
 
+export interface RelationEntry {
+  namespace: string;
+  sourceMemoId: string;
+  targetMemoId: string;
+  tag: string;
+  weight: number;
+  reason?: string;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+export interface RelationNode {
+  memoId: string;
+  namespace: string;
+  title?: string;
+}
+
+export interface RelationSaveResponse {
+  relation: RelationEntry;
+  rootNamespace: string;
+}
+
+export interface RelationDeleteResponse {
+  deleted: boolean;
+  relation?: RelationEntry;
+  rootNamespace: string;
+}
+
+export interface RelationListResponse {
+  namespace: string;
+  rootNamespace: string;
+  count: number;
+  edges: RelationEntry[];
+  nodes: RelationNode[];
+}
+
 export * from "./schemas";

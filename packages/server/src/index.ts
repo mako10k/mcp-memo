@@ -4,6 +4,9 @@ import { generateEmbedding } from "./openai";
 import {
   deleteInputSchema,
   listNamespacesInputSchema,
+  relationDeleteInputSchema,
+  relationListInputSchema,
+  relationSaveInputSchema,
   saveInputSchema,
   searchInputSchema,
   toolInvocationSchema
@@ -17,7 +20,10 @@ import type {
   MemoryDeleteResponse,
   MemoryListNamespacesResponse,
   MemorySaveResponse,
-  MemorySearchResponse
+  MemorySearchResponse,
+  RelationDeleteResponse,
+  RelationListResponse,
+  RelationSaveResponse
 } from "@mcp/shared";
 import type { ApiKeyContext } from "./auth.js";
 
@@ -170,6 +176,105 @@ export async function handleInvocation(
         depth: parsed.depth,
         count: namespaces.length,
         namespaces
+      };
+
+      return jsonResponse(payload, 200);
+    }
+    case "memory.relation.save": {
+      const parsed = relationSaveInputSchema.parse(invocation.params ?? {});
+      let resolved: NamespaceResolution;
+      try {
+        resolved = resolveNamespace(context, {
+          namespace: parsed.namespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+      } catch (error) {
+        return jsonResponse(
+          { message: "Invalid namespace", detail: (error as Error).message },
+          400
+        );
+      }
+
+      const relation = await store.upsertRelation({
+        ownerId: context.ownerId,
+        namespace: resolved.namespace,
+        sourceMemoId: parsed.sourceMemoId,
+        targetMemoId: parsed.targetMemoId,
+        tag: parsed.tag,
+        weight: parsed.weight,
+        reason: parsed.reason
+      });
+
+      const payload: RelationSaveResponse = {
+        relation,
+        rootNamespace: context.rootNamespace
+      };
+      return jsonResponse(payload, 200);
+    }
+    case "memory.relation.delete": {
+      const parsed = relationDeleteInputSchema.parse(invocation.params ?? {});
+      let resolved: NamespaceResolution;
+      try {
+        resolved = resolveNamespace(context, {
+          namespace: parsed.namespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+      } catch (error) {
+        return jsonResponse(
+          { message: "Invalid namespace", detail: (error as Error).message },
+          400
+        );
+      }
+
+      const relation = await store.deleteRelation({
+        ownerId: context.ownerId,
+        namespace: resolved.namespace,
+        sourceMemoId: parsed.sourceMemoId,
+        targetMemoId: parsed.targetMemoId,
+        tag: parsed.tag
+      });
+
+      if (!relation) {
+        return jsonResponse({ message: "Relation not found" }, 404);
+      }
+
+      const payload: RelationDeleteResponse = {
+        deleted: true,
+        relation,
+        rootNamespace: context.rootNamespace
+      };
+      return jsonResponse(payload, 200);
+    }
+    case "memory.relation.list": {
+      const parsed = relationListInputSchema.parse(invocation.params ?? {});
+      let resolved: NamespaceResolution;
+      try {
+        resolved = resolveNamespace(context, {
+          namespace: parsed.namespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+      } catch (error) {
+        return jsonResponse(
+          { message: "Invalid namespace", detail: (error as Error).message },
+          400
+        );
+      }
+
+      const result = await store.listRelations({
+        ownerId: context.ownerId,
+        namespace: resolved.namespace,
+        sourceMemoId: parsed.sourceMemoId,
+        targetMemoId: parsed.targetMemoId,
+        tag: parsed.tag,
+        limit: parsed.limit
+      });
+
+      const payload: RelationListResponse = {
+        namespace: resolved.namespace,
+        rootNamespace: context.rootNamespace,
+        count: result.edges.length,
+        edges: result.edges,
+        nodes: result.nodes
       };
 
       return jsonResponse(payload, 200);

@@ -4,6 +4,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   deleteInputSchema,
   listNamespacesInputSchema,
+  relationDeleteInputSchema,
+  relationListInputSchema,
+  relationSaveInputSchema,
   saveInputSchema,
   searchInputSchema,
   type DeleteInput,
@@ -13,6 +16,14 @@ import {
   type MemoryEntry,
   type MemorySaveResponse,
   type MemorySearchResponse,
+  type RelationDeleteResponse,
+  type RelationListResponse,
+  type RelationSaveResponse,
+  type RelationEntry,
+  type RelationNode,
+  type RelationSaveInput,
+  type RelationDeleteInput,
+  type RelationListInput,
   type SaveInput,
   type SearchInput
 } from "./memorySchemas";
@@ -21,7 +32,7 @@ import { MemoryHttpBridge } from "./httpBridge";
 
 const serverInfo = {
   name: "memory-mcp",
-  version: "0.1.3"
+  version: "0.3.0"
 };
 
 type CliArgKey =
@@ -108,6 +119,28 @@ function memoToPayload(memo: MemoryEntry, rootHint?: string, score?: number | nu
     updatedAt: memo.updatedAt,
     version: memo.version,
     ...(typeof score === "number" ? { score } : {})
+  };
+}
+
+function relationToPayload(relation: RelationEntry, rootHint?: string) {
+  return {
+    namespace: stripRootNamespace(relation.namespace, rootHint),
+    sourceMemoId: relation.sourceMemoId,
+    targetMemoId: relation.targetMemoId,
+    tag: relation.tag,
+    weight: relation.weight,
+    reason: relation.reason,
+    createdAt: relation.createdAt,
+    updatedAt: relation.updatedAt,
+    version: relation.version
+  };
+}
+
+function nodeToPayload(node: RelationNode, rootHint?: string) {
+  return {
+    memoId: node.memoId,
+    namespace: stripRootNamespace(node.namespace, rootHint),
+    title: node.title
   };
 }
 
@@ -203,6 +236,88 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
       ]
     };
   });
+
+  server.registerTool(
+    "memory-relation-save",
+    {
+      title: "Save memory relation",
+      description: "Create or update a semantic relation between two memos.",
+      inputSchema: relationSaveInputSchema.shape
+    },
+    async (args: unknown) => {
+      const parsed = relationSaveInputSchema.parse(args) as RelationSaveInput;
+      const result = await bridge.invoke<RelationSaveResponse>("memory.relation.save", parsed);
+      const payload = {
+        status: "ok",
+        relation: relationToPayload(result.relation, result.rootNamespace)
+      };
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(payload)
+          }
+        ]
+      };
+    }
+  );
+
+  server.registerTool(
+    "memory-relation-delete",
+    {
+      title: "Delete memory relation",
+      description: "Delete an existing relation between two memos.",
+      inputSchema: relationDeleteInputSchema.shape
+    },
+    async (args: unknown) => {
+      const parsed = relationDeleteInputSchema.parse(args) as RelationDeleteInput;
+      const result = await bridge.invoke<RelationDeleteResponse>("memory.relation.delete", parsed);
+      const payload = {
+        status: "ok",
+        deleted: result.deleted,
+        relation: result.relation ? relationToPayload(result.relation, result.rootNamespace) : undefined
+      };
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(payload)
+          }
+        ]
+      };
+    }
+  );
+
+  server.registerTool(
+    "memory-relation-list",
+    {
+      title: "List memory relations",
+      description: "List relations matching filters for a namespace.",
+      inputSchema: relationListInputSchema.shape
+    },
+    async (args: unknown) => {
+      const parsed = relationListInputSchema.parse(args) as RelationListInput;
+      const result = await bridge.invoke<RelationListResponse>("memory.relation.list", parsed);
+      const payload = {
+        status: "ok",
+        namespace: stripRootNamespace(result.namespace, result.rootNamespace),
+        count: result.count,
+        edges: result.edges.map((edge) => relationToPayload(edge, result.rootNamespace)),
+        nodes: result.nodes.map((node) => nodeToPayload(node, result.rootNamespace))
+      };
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(payload)
+          }
+        ]
+      };
+    }
+  );
 }
 
 async function main(): Promise<void> {
@@ -215,7 +330,7 @@ async function main(): Promise<void> {
       tools: {}
     },
     instructions:
-      "Use memory-save / memory-search / memory-delete / memory-list-namespaces to store, search, delete, and list namespaces. Configure the HTTP backend URL and headers via environment variables."
+      "Use memory-save / memory-search / memory-delete / memory-list-namespaces for memo operations and memory-relation-save / memory-relation-delete / memory-relation-list to manage semantic links. Configure the HTTP backend URL and headers via environment variables."
   });
 
   await registerTools(bridge, server);

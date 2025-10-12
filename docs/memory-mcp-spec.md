@@ -73,11 +73,34 @@
 - `GIN(metadata)`：メタデータ検索高速化。
 - `IVFFLAT(content_embedding)`：類似度検索高速化（pgvector）。
 
-### 5.3 追加テーブル（任意）
+### 5.3 リレーションテーブル `memory_relations`
+| カラム名 | 型 | 説明 |
+| --- | --- | --- |
+| `source_memo_id`, `target_memo_id` | UUID (複合 PK) | 関係元/先のメモ ID |
+| `namespace` | TEXT | 関係の適用 namespace（メモと同一ルート内） |
+| `tag` | TEXT | 関係種別ラベル（最大 64 文字） |
+| `weight` | NUMERIC(3,2) | 信頼度（0.00〜1.00） |
+| `reason` | TEXT | 関係理由の自由記述 |
+| `created_at` / `updated_at` | TIMESTAMPTZ | タイムスタンプ |
+| `version` | INTEGER | 楽観ロック用カウンタ |
+
+外部キー：
+- `(owner_id, namespace, source_memo_id)` → `memory_entries`
+- `(owner_id, namespace, target_memo_id)` → `memory_entries`
+
+インデックス：
+- `(owner_id, namespace, source_memo_id, tag)`
+- `(owner_id, namespace, target_memo_id, tag)`
+
+削除時は `ON DELETE CASCADE` により該当リレーションを自動削除する。
+
+### 5.4 追加テーブル（任意）
 - `memory_audit_logs`：変更履歴（操作種別、差分、実行主体）。
 
 ## 7. MCP ツール設計
-ツール数を最小化するため、以下 3 種に絞る。
+ツールセットはメモ操作とリレーション操作の 2 系統に整理する。
+
+### メモ操作ツール
 
 1. **`memory.save`**
    - 役割：メモの新規作成・更新（upsert）。
@@ -113,6 +136,31 @@
    - 入力：`namespace`, `memo_id`。
    - 処理：楽観ロックで削除。
    - 出力：削除結果（成功/対象なし）。
+
+### リレーション操作ツール
+
+4. **`memory.relation.save`**
+  - 役割：2 つのメモ間にタグ付きの意味的関連を作成・更新する。
+  - 入力：
+    - `namespace` (string, 任意。未指定時はデフォルト namespace)
+    - `sourceMemoId`, `targetMemoId` (UUID, 必須)
+    - `tag` (string, 必須・最大 64 文字)
+    - `weight` (float, 0.0〜1.0)
+    - `reason` (string, 任意)
+  - 出力：保存されたリレーションのサマリ（`namespace`, `sourceMemoId`, `targetMemoId`, `tag`, `weight`, `reason`, `created_at`, `updated_at`, `version`）。
+  - 処理：`INSERT ... ON CONFLICT` により UPSERT。`weight` か `reason` が変化した場合は `version` をインクリメント。
+
+5. **`memory.relation.delete`**
+  - 役割：指定したリレーションを削除。
+  - 入力：`namespace`, `sourceMemoId`, `targetMemoId`, `tag`。
+  - 出力：削除結果と削除レコードのスナップショット。
+  - 処理：`DELETE ... RETURNING`。対象が無い場合は `NOT_FOUND` を返却。
+
+6. **`memory.relation.list`**
+  - 役割：名前空間内のリレーションを列挙し、グラフ構造として返却。
+  - 入力：`namespace` (任意), `sourceMemoId` / `targetMemoId` / `tag` (任意フィルタ), `limit` (1〜500)。
+  - 出力：`edges[]`（リレーション一覧）と `nodes[]`（参照されたメモノード）。
+  - 処理：条件一致した `memory_relations` を取得し、関連メモを `memory_entries` から引き当てる。
 
 ### エラーハンドリング指針
 - バリデーションエラー：`INVALID_ARGUMENT`。
