@@ -4,10 +4,18 @@ export {
   searchInputSchema,
   deleteInputSchema,
   listNamespacesInputSchema,
+  relationDeleteInputSchema,
+  relationListInputSchema,
+  relationSaveInputSchema,
+  relationGraphInputSchema,
   toolInvocationSchema,
   type SaveInput,
   type SearchInput,
   type DeleteInput,
   type ListNamespacesInput,
+  type RelationDeleteInput,
+  type RelationListInput,
+  type RelationSaveInput,
+  type RelationGraphInput,
   type ToolInvocation
 } from "@mcp/shared";

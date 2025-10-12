@@ -42,4 +42,55 @@ export interface MemoryListNamespacesResponse {
   namespaces: string[];
 }
 
+export interface RelationEntry {
+  namespace: string;
+  sourceMemoId: string;
+  targetMemoId: string;
+  tag: string;
+  weight: number;
+  reason?: string;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+export interface RelationNode {
+  memoId: string;
+  namespace: string;
+  title?: string;
+}
+
+export interface RelationGraphEdge extends RelationEntry {
+  depth: number;
+  path: string[];
+  direction: "forward" | "backward";
+}
+
+export interface RelationSaveResponse {
+  relation: RelationEntry;
+  rootNamespace: string;
+}
+
+export interface RelationDeleteResponse {
+  deleted: boolean;
+  relation?: RelationEntry;
+  rootNamespace: string;
+}
+
+export interface RelationListResponse {
+  namespace: string;
+  rootNamespace: string;
+  count: number;
+  edges: RelationEntry[];
+  nodes: RelationNode[];
+}
+
+export interface RelationGraphResponse {
+  namespace: string;
+  rootNamespace: string;
+  count: number;
+  edges: RelationGraphEdge[];
+  nodes: RelationNode[];
+}
+
 export * from "./schemas";

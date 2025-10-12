@@ -4,9 +4,12 @@ Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索�
 
 ## 機能
 - `memory-save`：メモの新規作成 / 更新（埋め込み自動生成、メタデータマージ、バージョン増分）。
-- `memory-search`：ベクトル類似度検索＋メタデータフィルタ。
+- `memory-search`：ベクトル類似度検索＋メタデータフィルタ。メモ ID を pivot にしたコサイン類似度検索や `distanceMetric`（`cosine` / `l2`）の切り替えに対応。
 - `memory-delete`：名前空間 + memo ID で削除。
 - `memory-list-namespaces`：ルート/デフォルトを基点にサブ名前空間を列挙。
+- `memory-relation-save`：2 つのメモ間にタグ付きリレーションを保存し、重み・理由を記録。
+- `memory-relation-delete` / `memory-relation-list`：リレーションの削除・列挙（グラフ構造出力）。
+- `memory-relation-graph`：起点メモからリレーションを深さ制限付きでトラバース（順方向 / 逆方向 / 双方向を選択可能、路径は JSON 配列で返却）。
 - すべてのハンドラが MCP ツール呼び出し形式（`{ tool, params }` JSON）に対応。
 
 ## 必要環境
@@ -24,6 +27,7 @@ Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索�
   ```sql
   \i packages/server/migrations/001_init.sql
   \i packages/server/migrations/002_namespace_hierarchy.sql
+    \i packages/server/migrations/003_memory_relations.sql
   ```
 3. Cloudflare Workers のシークレットを登録（wrangler）
    ```bash
@@ -173,6 +177,139 @@ Cloudflare 側の環境構築・証明書チェーンの取得方法を [`docs/c
       "legacy/DEF/projects",
       "legacy/DEF/projects/app",
       "legacy/DEF/projects/app/backend"
+    ]
+  }
+  ```
+
+- リレーション保存：
+  ```json
+  {
+    "tool": "memory.relation.save",
+    "params": {
+      "namespace": "projects/alpha",
+      "sourceMemoId": "...",
+      "targetMemoId": "...",
+      "tag": "supports",
+      "weight": 0.8,
+      "reason": "Design document backs the implementation detail"
+    }
+  }
+  ```
+  ```json
+  {
+    "relation": {
+      "namespace": "legacy/DEF/projects/alpha",
+      "sourceMemoId": "...",
+      "targetMemoId": "...",
+      "tag": "supports",
+      "weight": 0.8,
+      "reason": "Design document backs the implementation detail",
+      "createdAt": "2025-10-12T00:00:00.000Z",
+      "updatedAt": "2025-10-12T00:00:00.000Z",
+      "version": 1
+    },
+    "rootNamespace": "legacy"
+  }
+  ```
+
+- リレーション一覧：
+  ```json
+  {
+    "tool": "memory.relation.list",
+    "params": {
+      "namespace": "projects/alpha",
+      "sourceMemoId": "...",
+      "limit": 50
+    }
+  }
+  ```
+
+- Pivot 類似検索：
+  ```json
+  {
+    "tool": "memory.search",
+    "params": {
+      "namespace": "projects/alpha",
+      "pivotMemoId": "...",
+      "k": 5,
+      "distanceMetric": "cosine"
+    }
+  }
+  ```
+  ```json
+  {
+    "count": 5,
+    "items": [
+      {
+        "memoId": "...",
+        "namespace": "projects/alpha",
+        "score": 0.93,
+        "createdAt": "2025-10-12T00:00:00.000Z",
+        "updatedAt": "2025-10-12T00:00:00.000Z",
+        "version": 3
+      }
+    ],
+    "rootNamespace": "legacy"
+  }
+  ```
+
+- リレーショングラフトラバース：
+  ```json
+  {
+    "tool": "memory.relation.graph",
+    "params": {
+      "namespace": "projects/alpha",
+      "startMemoId": "...",
+      "direction": "both",
+      "maxDepth": 3,
+      "limit": 100
+    }
+  }
+  ```
+  ```json
+  {
+    "namespace": "legacy/DEF/projects/alpha",
+    "rootNamespace": "legacy",
+    "count": 4,
+    "edges": [
+      {
+        "namespace": "legacy/DEF/projects/alpha",
+        "sourceMemoId": "...",
+        "targetMemoId": "...",
+        "tag": "supports",
+        "weight": 0.7,
+        "direction": "forward",
+        "depth": 1,
+        "path": ["...", "..."]
+      }
+    ],
+    "nodes": [
+      { "memoId": "...", "namespace": "legacy/DEF/projects/alpha", "title": "Root" },
+      { "memoId": "...", "namespace": "legacy/DEF/projects/alpha", "title": "Linked" }
+    ]
+  }
+  ```
+  ```json
+  {
+    "namespace": "legacy/DEF/projects/alpha",
+    "rootNamespace": "legacy",
+    "count": 1,
+    "edges": [
+      {
+        "namespace": "legacy/DEF/projects/alpha",
+        "sourceMemoId": "...",
+        "targetMemoId": "...",
+        "tag": "supports",
+        "weight": 0.8,
+        "reason": "Design document backs the implementation detail",
+        "createdAt": "2025-10-12T00:00:00.000Z",
+        "updatedAt": "2025-10-12T00:00:00.000Z",
+        "version": 1
+      }
+    ],
+    "nodes": [
+      { "memoId": "...", "namespace": "legacy/DEF/projects/alpha", "title": "Design" },
+      { "memoId": "...", "namespace": "legacy/DEF/projects/alpha", "title": "Implementation" }
     ]
   }
   ```

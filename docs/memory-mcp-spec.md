@@ -30,7 +30,8 @@
 3. **メモの検索**：
    - 類似度検索：クエリテキストに近いメモを取得。
    - メタデータ検索：キー・値の条件でフィルタリング。
-   - 混合検索：類似度上位からメタデータフィルタを適用。
+  - 混合検索：類似度上位からメタデータフィルタを適用。
+  - Pivot 検索：既存メモの埋め込みを基点に類似メモを抽出。
 4. **メモの削除**：不要になったメモを削除（オプション、権限前提）。
 
 ## 5. 全体アーキテクチャ
@@ -73,11 +74,34 @@
 - `GIN(metadata)`：メタデータ検索高速化。
 - `IVFFLAT(content_embedding)`：類似度検索高速化（pgvector）。
 
-### 5.3 追加テーブル（任意）
+### 5.3 リレーションテーブル `memory_relations`
+| カラム名 | 型 | 説明 |
+| --- | --- | --- |
+| `source_memo_id`, `target_memo_id` | UUID (複合 PK) | 関係元/先のメモ ID |
+| `namespace` | TEXT | 関係の適用 namespace（メモと同一ルート内） |
+| `tag` | TEXT | 関係種別ラベル（最大 64 文字） |
+| `weight` | NUMERIC(3,2) | 信頼度（0.00〜1.00） |
+| `reason` | TEXT | 関係理由の自由記述 |
+| `created_at` / `updated_at` | TIMESTAMPTZ | タイムスタンプ |
+| `version` | INTEGER | 楽観ロック用カウンタ |
+
+外部キー：
+- `(owner_id, namespace, source_memo_id)` → `memory_entries`
+- `(owner_id, namespace, target_memo_id)` → `memory_entries`
+
+インデックス：
+- `(owner_id, namespace, source_memo_id, tag)`
+- `(owner_id, namespace, target_memo_id, tag)`
+
+削除時は `ON DELETE CASCADE` により該当リレーションを自動削除する。
+
+### 5.4 追加テーブル（任意）
 - `memory_audit_logs`：変更履歴（操作種別、差分、実行主体）。
 
 ## 7. MCP ツール設計
-ツール数を最小化するため、以下 3 種に絞る。
+ツールセットはメモ操作とリレーション操作の 2 系統に整理する。
+
+### メモ操作ツール
 
 1. **`memory.save`**
    - 役割：メモの新規作成・更新（upsert）。
@@ -102,17 +126,57 @@
      - `query` (string, 任意：類似度検索に使用)
      - `metadata_filter` (object, 任意：部分一致/正確一致指定)
      - `k` (integer, デフォルト 10)
-     - `minimum_similarity` (float, 任意)
+     - `minimum_similarity` (float, 任意。`distance_metric = cosine` のときのみ有効)
+     - `pivot_memo_id` (uuid, 任意：指定時は該当メモの埋め込みで検索)
+     - `distance_metric` (enum: `cosine` | `l2`, 既定は `cosine`)
+     - `exclude_pivot` (boolean, 既定 true)
    - 出力：`items[]` 各オブジェクトに `memo_id`, `content`, `score`, `metadata`, `created_at`, `updated_at`。
    - 処理：
-     1. 類似検索用ベクトル生成（`query` がある場合）。
-     2. pgvector による `cosine_distance` ソート。
+     1. 類似検索用ベクトル生成（`query` がある場合）または pivot メモの `content_embedding` を取得。
+     2. pgvector による距離計算（`cosine` / `l2`）とソート。
      3. メタデータフィルタ適用（SQL `WHERE`）。
 
 3. **`memory.delete`**（オプションだが初期から用意）
    - 入力：`namespace`, `memo_id`。
    - 処理：楽観ロックで削除。
    - 出力：削除結果（成功/対象なし）。
+
+### リレーション操作ツール
+
+4. **`memory.relation.save`**
+  - 役割：2 つのメモ間にタグ付きの意味的関連を作成・更新する。
+  - 入力：
+    - `namespace` (string, 任意。未指定時はデフォルト namespace)
+    - `sourceMemoId`, `targetMemoId` (UUID, 必須)
+    - `tag` (string, 必須・最大 64 文字)
+    - `weight` (float, 0.0〜1.0)
+    - `reason` (string, 任意)
+  - 出力：保存されたリレーションのサマリ（`namespace`, `sourceMemoId`, `targetMemoId`, `tag`, `weight`, `reason`, `created_at`, `updated_at`, `version`）。
+  - 処理：`INSERT ... ON CONFLICT` により UPSERT。`weight` か `reason` が変化した場合は `version` をインクリメント。
+
+5. **`memory.relation.delete`**
+  - 役割：指定したリレーションを削除。
+  - 入力：`namespace`, `sourceMemoId`, `targetMemoId`, `tag`。
+  - 出力：削除結果と削除レコードのスナップショット。
+  - 処理：`DELETE ... RETURNING`。対象が無い場合は `NOT_FOUND` を返却。
+
+6. **`memory.relation.list`**
+  - 役割：名前空間内のリレーションを列挙し、グラフ構造として返却。
+  - 入力：`namespace` (任意), `sourceMemoId` / `targetMemoId` / `tag` (任意フィルタ), `limit` (1〜500)。
+  - 出力：`edges[]`（リレーション一覧）と `nodes[]`（参照されたメモノード）。
+  - 処理：条件一致した `memory_relations` を取得し、関連メモを `memory_entries` から引き当てる。
+
+7. **`memory.relation.graph`**
+  - 役割：起点メモからリレーションを深さ制限付きでトラバースし、路径情報を返却。
+  - 入力：
+    - `namespace` (任意)
+    - `startMemoId` (uuid, 必須)
+    - `direction` (enum: `forward` | `backward` | `both`、既定は `forward`)
+    - `maxDepth` (1〜10、既定 3)
+    - `tag` (任意フィルタ)
+    - `limit` (1〜1000)
+  - 出力：`edges[]` に `depth`, `direction`, `path`（JSON 配列）を含め、`nodes[]` は参照されたメモノード。
+  - 処理：PostgreSQL の再帰 CTE を用いて順方向・逆方向の探索を行い、ループを検出しながら限定件数を取得。
 
 ### エラーハンドリング指針
 - バリデーションエラー：`INVALID_ARGUMENT`。
