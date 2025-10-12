@@ -259,11 +259,11 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
     },
 
     async search(params: SearchParams): Promise<SearchResult[]> {
-      const conditions: string[] = ["owner_id = $1", "namespace = $2"];
+  const conditions: string[] = ["me.owner_id = $1", "me.namespace = $2"];
       const values: unknown[] = [params.ownerId, params.namespace];
       let scoreClause = "NULL::double precision AS score";
-      let orderClause = "ORDER BY updated_at DESC";
-      let fromClause = "FROM memory_entries";
+  let orderClause = "ORDER BY me.updated_at DESC";
+  let fromClause = "FROM memory_entries me";
       let withClause = "";
       let vectorParamIndex: number | null = null;
       let pivotParamIndex: number | null = null;
@@ -293,24 +293,24 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
           FROM memory_entries
           WHERE owner_id = $1 AND namespace = $2 AND id = $${pivotParamIndex}
         )\n`;
-        fromClause = "FROM memory_entries, pivot";
+        fromClause = "FROM memory_entries me CROSS JOIN pivot p";
 
         if (metric === "cosine") {
-          scoreClause = "1 - (content_embedding <=> pivot.content_embedding) AS score";
-          orderClause = "ORDER BY content_embedding <-> pivot.content_embedding";
+          scoreClause = "1 - (me.content_embedding <=> p.content_embedding) AS score";
+          orderClause = "ORDER BY me.content_embedding <-> p.content_embedding";
 
           if (typeof params.minimumSimilarity === "number") {
             values.push(params.minimumSimilarity);
             const minParamIndex = values.length;
-            conditions.push(`1 - (content_embedding <=> pivot.content_embedding) >= $${minParamIndex}`);
+            conditions.push(`1 - (me.content_embedding <=> p.content_embedding) >= $${minParamIndex}`);
           }
         } else {
-          scoreClause = "- (content_embedding <-> pivot.content_embedding) AS score";
-          orderClause = "ORDER BY content_embedding <-> pivot.content_embedding";
+          scoreClause = "- (me.content_embedding <-> p.content_embedding) AS score";
+          orderClause = "ORDER BY me.content_embedding <-> p.content_embedding";
         }
 
         if (params.excludePivot ?? true) {
-          conditions.push(`id <> $${pivotParamIndex}`);
+          conditions.push(`me.id <> $${pivotParamIndex}`);
         }
       } else if (params.embedding) {
         const vectorLiteral = toVectorLiteral(params.embedding);
@@ -318,24 +318,24 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
         vectorParamIndex = values.length;
 
         if (metric === "cosine") {
-          scoreClause = `1 - (content_embedding <=> $${vectorParamIndex}::vector) AS score`;
-          orderClause = `ORDER BY content_embedding <-> $${vectorParamIndex}::vector`;
+          scoreClause = `1 - (me.content_embedding <=> $${vectorParamIndex}::vector) AS score`;
+          orderClause = `ORDER BY me.content_embedding <-> $${vectorParamIndex}::vector`;
 
           if (typeof params.minimumSimilarity === "number") {
             values.push(params.minimumSimilarity);
             const minParamIndex = values.length;
-            conditions.push(`1 - (content_embedding <=> $${vectorParamIndex}::vector) >= $${minParamIndex}`);
+            conditions.push(`1 - (me.content_embedding <=> $${vectorParamIndex}::vector) >= $${minParamIndex}`);
           }
         } else {
-          scoreClause = `- (content_embedding <-> $${vectorParamIndex}::vector) AS score`;
-          orderClause = `ORDER BY content_embedding <-> $${vectorParamIndex}::vector`;
+          scoreClause = `- (me.content_embedding <-> $${vectorParamIndex}::vector) AS score`;
+          orderClause = `ORDER BY me.content_embedding <-> $${vectorParamIndex}::vector`;
         }
       }
 
       if (params.metadataFilter && Object.keys(params.metadataFilter).length > 0) {
         values.push(JSON.stringify(params.metadataFilter));
         const metadataParamIndex = values.length;
-        conditions.push(`metadata @> $${metadataParamIndex}::jsonb`);
+        conditions.push(`me.metadata @> $${metadataParamIndex}::jsonb`);
       }
 
       values.push(params.k);
@@ -343,7 +343,7 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
 
       const query = `
         ${withClause}
-        SELECT namespace, id, title, content, metadata, created_at, updated_at, version, ${scoreClause}
+  SELECT me.namespace, me.id, me.title, me.content, me.metadata, me.created_at, me.updated_at, me.version, ${scoreClause}
         ${fromClause}
         WHERE ${conditions.join(" AND ")}
         ${orderClause}
@@ -612,7 +612,7 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
 )`);
       }
 
-      const withClause = cteDefinitions.length ? `WITH ${cteDefinitions.join(",\n")}` : "";
+  const withClause = cteDefinitions.length ? `WITH RECURSIVE ${cteDefinitions.join(",\n")}` : "";
 
       const traversalSelects: string[] = [];
       if (includeForward) {
