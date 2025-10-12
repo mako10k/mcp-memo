@@ -1,6 +1,6 @@
 {
   "name": "@mako10k/mcp-memo",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "STDIO adapter that bridges the mcp-memory HTTP server to common MCP clients.",
   "type": "module",
   "main": "./dist/index.js",
@@ -51,6 +51,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/node": "^22.9.0",
     "tsup": "^8.2.4",
     "typescript": "^5.4.5"
   }

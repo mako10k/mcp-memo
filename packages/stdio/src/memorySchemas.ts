@@ -61,6 +61,12 @@ export interface RelationNode {
   title?: string;
 }
 
+export interface RelationGraphEdge extends RelationEntry {
+  depth: number;
+  path: string[];
+  direction: "forward" | "backward";
+}
+
 export interface RelationSaveResponse {
   relation: RelationEntry;
   rootNamespace: string;
@@ -80,6 +86,14 @@ export interface RelationListResponse {
   nodes: RelationNode[];
 }
 
+export interface RelationGraphResponse {
+  namespace: string;
+  rootNamespace: string;
+  count: number;
+  edges: RelationGraphEdge[];
+  nodes: RelationNode[];
+}
+
 const primitiveValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const metadataValueSchema: z.ZodType<unknown> = z.lazy(() =>
   z.union([primitiveValue, z.array(metadataValueSchema), z.record(metadataValueSchema)])
@@ -89,6 +103,8 @@ export const metadataSchema = z.record(metadataValueSchema);
 
 const relationTagSchema = z.string().min(1).max(64);
 const relationWeightSchema = z.coerce.number().min(0).max(1);
+const distanceMetricSchema = z.enum(["cosine", "l2"]);
+const relationDirectionSchema = z.enum(["forward", "backward", "both"]);
 
 export const relationSaveInputSchema = z.object({
   namespace: z.string().min(1).optional(),
@@ -127,7 +143,10 @@ export const searchInputSchema = z.object({
   query: z.string().min(1).optional(),
   metadataFilter: metadataSchema.optional(),
   k: z.coerce.number().int().min(1).max(100).default(10),
-  minimumSimilarity: z.coerce.number().min(0).max(1).optional()
+  minimumSimilarity: z.coerce.number().min(0).max(1).optional(),
+  pivotMemoId: z.string().uuid().optional(),
+  distanceMetric: distanceMetricSchema.default("cosine"),
+  excludePivot: z.boolean().optional()
 });
 
 export const deleteInputSchema = z.object({
@@ -141,6 +160,15 @@ export const listNamespacesInputSchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100)
 });
 
+export const relationGraphInputSchema = z.object({
+  namespace: z.string().min(1).optional(),
+  startMemoId: z.string().uuid(),
+  maxDepth: z.coerce.number().int().min(1).max(10).default(3),
+  direction: relationDirectionSchema.default("forward"),
+  tag: relationTagSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(1000).default(200)
+});
+
 export const toolInvocationSchema = z.object({
   tool: z.enum([
     "memory.save",
@@ -149,7 +177,8 @@ export const toolInvocationSchema = z.object({
     "memory.list_namespaces",
     "memory.relation.save",
     "memory.relation.delete",
-    "memory.relation.list"
+    "memory.relation.list",
+    "memory.relation.graph"
   ]),
   params: z.unknown().optional()
 });
@@ -161,4 +190,7 @@ export type ListNamespacesInput = z.infer<typeof listNamespacesInputSchema>;
 export type RelationSaveInput = z.infer<typeof relationSaveInputSchema>;
 export type RelationDeleteInput = z.infer<typeof relationDeleteInputSchema>;
 export type RelationListInput = z.infer<typeof relationListInputSchema>;
+export type RelationGraphInput = z.infer<typeof relationGraphInputSchema>;
 export type ToolInvocation = z.infer<typeof toolInvocationSchema>;
+export type DistanceMetric = z.infer<typeof distanceMetricSchema>;
+export type RelationDirection = z.infer<typeof relationDirectionSchema>;

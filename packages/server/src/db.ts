@@ -1,5 +1,13 @@
 import { neon, neonConfig } from "@neondatabase/serverless";
-import type { MemoMetadata, MemoryEntry, RelationEntry, RelationNode } from "@mcp/shared";
+import type {
+  MemoMetadata,
+  MemoryEntry,
+  RelationEntry,
+  RelationNode,
+  RelationGraphEdge,
+  DistanceMetric,
+  RelationDirection
+} from "@mcp/shared";
 
 import type { EnvVars } from "./env";
 
@@ -41,6 +49,12 @@ interface RelationNodeRow {
   title: string | null;
 }
 
+interface RelationGraphRow extends RelationRow {
+  depth: number;
+  direction: "forward" | "backward";
+  path_json: unknown;
+}
+
 export interface UpsertParams {
   ownerId: string;
   namespace: string;
@@ -58,6 +72,9 @@ export interface SearchParams {
   metadataFilter?: MemoMetadata;
   k: number;
   minimumSimilarity?: number;
+  pivotMemoId?: string;
+  distanceMetric: DistanceMetric;
+  excludePivot?: boolean;
 }
 
 export interface DeleteParams {
@@ -105,6 +122,21 @@ export interface RelationListResult {
   nodes: RelationNode[];
 }
 
+export interface RelationGraphParams {
+  ownerId: string;
+  namespace: string;
+  startMemoId: string;
+  maxDepth: number;
+  direction: RelationDirection;
+  tag?: string;
+  limit: number;
+}
+
+export interface RelationGraphResult {
+  edges: RelationGraphEdge[];
+  nodes: RelationNode[];
+}
+
 export interface SearchResult extends MemoryEntry {
   score: number | null;
 }
@@ -117,6 +149,7 @@ export interface MemoryStore {
   upsertRelation(params: RelationUpsertParams): Promise<RelationEntry>;
   deleteRelation(params: RelationDeleteParams): Promise<RelationEntry | null>;
   listRelations(params: RelationListParams): Promise<RelationListResult>;
+  relationGraph(params: RelationGraphParams): Promise<RelationGraphResult>;
 }
 
 function toVectorLiteral(vector: number[]): string {
@@ -230,20 +263,72 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
       const values: unknown[] = [params.ownerId, params.namespace];
       let scoreClause = "NULL::double precision AS score";
       let orderClause = "ORDER BY updated_at DESC";
-
+      let fromClause = "FROM memory_entries";
+      let withClause = "";
       let vectorParamIndex: number | null = null;
+      let pivotParamIndex: number | null = null;
 
-      if (params.embedding) {
+      const metric = params.distanceMetric ?? "cosine";
+
+      if (params.pivotMemoId) {
+        const pivotCheck = (await sql(
+          `
+            SELECT 1
+            FROM memory_entries
+            WHERE owner_id = $1 AND namespace = $2 AND id = $3
+            LIMIT 1;
+          `,
+          [params.ownerId, params.namespace, params.pivotMemoId]
+        )) as unknown[];
+
+        if (!pivotCheck.length) {
+          throw new Error("PIVOT_NOT_FOUND");
+        }
+
+        values.push(params.pivotMemoId);
+        pivotParamIndex = values.length;
+
+        withClause = `WITH pivot AS (
+          SELECT content_embedding
+          FROM memory_entries
+          WHERE owner_id = $1 AND namespace = $2 AND id = $${pivotParamIndex}
+        )\n`;
+        fromClause = "FROM memory_entries, pivot";
+
+        if (metric === "cosine") {
+          scoreClause = "1 - (content_embedding <=> pivot.content_embedding) AS score";
+          orderClause = "ORDER BY content_embedding <-> pivot.content_embedding";
+
+          if (typeof params.minimumSimilarity === "number") {
+            values.push(params.minimumSimilarity);
+            const minParamIndex = values.length;
+            conditions.push(`1 - (content_embedding <=> pivot.content_embedding) >= $${minParamIndex}`);
+          }
+        } else {
+          scoreClause = "- (content_embedding <-> pivot.content_embedding) AS score";
+          orderClause = "ORDER BY content_embedding <-> pivot.content_embedding";
+        }
+
+        if (params.excludePivot ?? true) {
+          conditions.push(`id <> $${pivotParamIndex}`);
+        }
+      } else if (params.embedding) {
         const vectorLiteral = toVectorLiteral(params.embedding);
         values.push(vectorLiteral);
         vectorParamIndex = values.length;
-        scoreClause = `1 - (content_embedding <=> $${vectorParamIndex}::vector) AS score`;
-        orderClause = `ORDER BY content_embedding <-> $${vectorParamIndex}::vector`;
 
-        if (typeof params.minimumSimilarity === "number") {
-          values.push(params.minimumSimilarity);
-          const minParamIndex = values.length;
-          conditions.push(`1 - (content_embedding <=> $${vectorParamIndex}::vector) >= $${minParamIndex}`);
+        if (metric === "cosine") {
+          scoreClause = `1 - (content_embedding <=> $${vectorParamIndex}::vector) AS score`;
+          orderClause = `ORDER BY content_embedding <-> $${vectorParamIndex}::vector`;
+
+          if (typeof params.minimumSimilarity === "number") {
+            values.push(params.minimumSimilarity);
+            const minParamIndex = values.length;
+            conditions.push(`1 - (content_embedding <=> $${vectorParamIndex}::vector) >= $${minParamIndex}`);
+          }
+        } else {
+          scoreClause = `- (content_embedding <-> $${vectorParamIndex}::vector) AS score`;
+          orderClause = `ORDER BY content_embedding <-> $${vectorParamIndex}::vector`;
         }
       }
 
@@ -257,8 +342,9 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
       const limitParamIndex = values.length;
 
       const query = `
+        ${withClause}
         SELECT namespace, id, title, content, metadata, created_at, updated_at, version, ${scoreClause}
-        FROM memory_entries
+        ${fromClause}
         WHERE ${conditions.join(" AND ")}
         ${orderClause}
         LIMIT $${limitParamIndex};
@@ -423,6 +509,210 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
       const nodes = nodeRows.map(mapRelationNodeRow);
 
       return { edges, nodes } satisfies RelationListResult;
+    },
+
+    async relationGraph(params: RelationGraphParams): Promise<RelationGraphResult> {
+      const includeForward = params.direction === "forward" || params.direction === "both";
+      const includeBackward = params.direction === "backward" || params.direction === "both";
+
+      if (!includeForward && !includeBackward) {
+        return { edges: [], nodes: [] } satisfies RelationGraphResult;
+      }
+
+      const values: unknown[] = [params.ownerId, params.namespace, params.startMemoId];
+      let tagParamIndex: number | null = null;
+      if (params.tag) {
+        values.push(params.tag);
+        tagParamIndex = values.length;
+      }
+
+      values.push(params.maxDepth);
+      const depthParamIndex = values.length;
+      values.push(params.limit);
+      const limitParamIndex = values.length;
+
+      const tagFilterInitial = tagParamIndex ? ` AND r.tag = $${tagParamIndex}` : "";
+      const tagFilterRecursive = tagParamIndex ? ` AND r.tag = $${tagParamIndex}` : "";
+
+      const cteDefinitions: string[] = [];
+
+      if (includeForward) {
+        cteDefinitions.push(`forward_traversal AS (
+  SELECT
+    r.namespace,
+    r.source_memo_id,
+    r.target_memo_id,
+    r.tag,
+    r.weight,
+    r.reason,
+    r.created_at,
+    r.updated_at,
+    r.version,
+    ARRAY[$3::uuid, r.target_memo_id] AS path,
+    1 AS depth,
+    'forward'::text AS direction
+  FROM memory_relations r
+  WHERE r.owner_id = $1 AND r.namespace = $2 AND r.source_memo_id = $3${tagFilterInitial}
+  UNION ALL
+  SELECT
+    r.namespace,
+    r.source_memo_id,
+    r.target_memo_id,
+    r.tag,
+    r.weight,
+    r.reason,
+    r.created_at,
+    r.updated_at,
+    r.version,
+    ft.path || r.target_memo_id,
+    ft.depth + 1,
+    'forward'::text AS direction
+  FROM forward_traversal ft
+  JOIN memory_relations r
+    ON r.owner_id = $1 AND r.namespace = $2 AND r.source_memo_id = ft.target_memo_id
+  WHERE ft.depth < $${depthParamIndex}${tagFilterRecursive} AND NOT r.target_memo_id = ANY(ft.path)
+)`);
+      }
+
+      if (includeBackward) {
+        cteDefinitions.push(`backward_traversal AS (
+  SELECT
+    r.namespace,
+    r.source_memo_id,
+    r.target_memo_id,
+    r.tag,
+    r.weight,
+    r.reason,
+    r.created_at,
+    r.updated_at,
+    r.version,
+    ARRAY[$3::uuid, r.source_memo_id] AS path,
+    1 AS depth,
+    'backward'::text AS direction
+  FROM memory_relations r
+  WHERE r.owner_id = $1 AND r.namespace = $2 AND r.target_memo_id = $3${tagFilterInitial}
+  UNION ALL
+  SELECT
+    r.namespace,
+    r.source_memo_id,
+    r.target_memo_id,
+    r.tag,
+    r.weight,
+    r.reason,
+    r.created_at,
+    r.updated_at,
+    r.version,
+    bt.path || r.source_memo_id,
+    bt.depth + 1,
+    'backward'::text AS direction
+  FROM backward_traversal bt
+  JOIN memory_relations r
+    ON r.owner_id = $1 AND r.namespace = $2 AND r.target_memo_id = bt.source_memo_id
+  WHERE bt.depth < $${depthParamIndex}${tagFilterRecursive} AND NOT r.source_memo_id = ANY(bt.path)
+)`);
+      }
+
+      const withClause = cteDefinitions.length ? `WITH ${cteDefinitions.join(",\n")}` : "";
+
+      const traversalSelects: string[] = [];
+      if (includeForward) {
+        traversalSelects.push("SELECT * FROM forward_traversal");
+      }
+      if (includeBackward) {
+        traversalSelects.push("SELECT * FROM backward_traversal");
+      }
+
+      const traversalSource = traversalSelects.join("\nUNION ALL\n");
+
+      const query = `
+        ${withClause}
+        SELECT
+          namespace,
+          source_memo_id,
+          target_memo_id,
+          tag,
+          weight,
+          reason,
+          created_at,
+          updated_at,
+          version,
+          depth,
+          direction,
+          to_jsonb(path) AS path_json
+        FROM (
+          ${traversalSource}
+        ) combined
+        ORDER BY depth, updated_at DESC
+        LIMIT $${limitParamIndex};
+      `;
+
+      const rows = traversalSource
+        ? ((await sql(query, values)) as RelationGraphRow[])
+        : [];
+
+      const normalizePath = (value: unknown): string[] => {
+        if (Array.isArray(value)) {
+          return value.map((item) => String(item));
+        }
+        if (typeof value === "string") {
+          try {
+            const parsed = JSON.parse(value);
+            if (Array.isArray(parsed)) {
+              return parsed.map((item) => String(item));
+            }
+          } catch (error) {
+            console.warn("Failed to parse relation path JSON", error);
+          }
+        }
+        if (value && typeof value === "object") {
+          try {
+            const stringified = JSON.stringify(value);
+            const parsed = JSON.parse(stringified);
+            if (Array.isArray(parsed)) {
+              return parsed.map((item) => String(item));
+            }
+          } catch (error) {
+            console.warn("Failed to normalise relation path object", error);
+          }
+        }
+        return [];
+      };
+
+      const edges: RelationGraphEdge[] = rows.map((row) => ({
+        ...mapRelationRow(row),
+        depth: row.depth,
+        direction: row.direction,
+        path: normalizePath(row.path_json)
+      }));
+
+      if (edges.length === 0) {
+        return { edges: [], nodes: [] } satisfies RelationGraphResult;
+      }
+
+      const memoIds = new Set<string>([params.startMemoId]);
+      for (const edge of edges) {
+        memoIds.add(edge.sourceMemoId);
+        memoIds.add(edge.targetMemoId);
+        for (const id of edge.path) {
+          memoIds.add(id);
+        }
+      }
+
+      const nodesQuery = `
+        SELECT id, namespace, title
+        FROM memory_entries
+        WHERE owner_id = $1 AND namespace = $2 AND id = ANY($3::uuid[]);
+      `;
+
+      const nodeRows = (await sql(nodesQuery, [
+        params.ownerId,
+        params.namespace,
+        Array.from(memoIds)
+      ])) as RelationNodeRow[];
+
+      const nodes = nodeRows.map(mapRelationNodeRow);
+
+      return { edges, nodes } satisfies RelationGraphResult;
     }
   };
 }

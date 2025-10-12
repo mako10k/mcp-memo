@@ -5,6 +5,7 @@ import {
   deleteInputSchema,
   listNamespacesInputSchema,
   relationDeleteInputSchema,
+  relationGraphInputSchema,
   relationListInputSchema,
   relationSaveInputSchema,
   saveInputSchema,
@@ -23,7 +24,8 @@ import type {
   MemorySearchResponse,
   RelationDeleteResponse,
   RelationListResponse,
-  RelationSaveResponse
+  RelationSaveResponse,
+  RelationGraphResponse
 } from "@mcp/shared";
 import type { ApiKeyContext } from "./auth.js";
 
@@ -104,27 +106,46 @@ export async function handleInvocation(
         );
       }
 
-      const embeddingVector = parsed.query ? await embed(parsed.query) : undefined;
+      if (parsed.distanceMetric === "l2" && typeof parsed.minimumSimilarity === "number") {
+        return jsonResponse(
+          { message: "minimumSimilarity is only supported with cosine distance" },
+          400
+        );
+      }
+
+      const usingPivot = Boolean(parsed.pivotMemoId);
+      const shouldEmbedQuery = Boolean(parsed.query) && !usingPivot;
+      const embeddingVector = shouldEmbedQuery ? await embed(parsed.query!) : undefined;
 
       const metadataFilter = parsed.metadataFilter && Object.keys(parsed.metadataFilter).length
         ? parsed.metadataFilter
         : undefined;
 
-      const items = await store.search({
-        ownerId: context.ownerId,
-        namespace: resolved.namespace,
-        embedding: embeddingVector,
-        metadataFilter,
-        k: parsed.k,
-        minimumSimilarity: parsed.minimumSimilarity
-      });
+      try {
+        const items = await store.search({
+          ownerId: context.ownerId,
+          namespace: resolved.namespace,
+          embedding: embeddingVector,
+          metadataFilter,
+          k: parsed.k,
+          minimumSimilarity: parsed.distanceMetric === "cosine" ? parsed.minimumSimilarity : undefined,
+          pivotMemoId: parsed.pivotMemoId,
+          distanceMetric: parsed.distanceMetric,
+          excludePivot: parsed.excludePivot ?? true
+        });
 
-      const payload: MemorySearchResponse = {
-        items,
-        count: items.length,
-        rootNamespace: context.rootNamespace
-      };
-      return jsonResponse(payload, 200);
+        const payload: MemorySearchResponse = {
+          items,
+          count: items.length,
+          rootNamespace: context.rootNamespace
+        };
+        return jsonResponse(payload, 200);
+      } catch (error) {
+        if ((error as Error).message === "PIVOT_NOT_FOUND") {
+          return jsonResponse({ message: "Pivot memo not found" }, 404);
+        }
+        throw error;
+      }
     }
     case "memory.delete": {
       const parsed = deleteInputSchema.parse(invocation.params ?? {});
@@ -270,6 +291,41 @@ export async function handleInvocation(
       });
 
       const payload: RelationListResponse = {
+        namespace: resolved.namespace,
+        rootNamespace: context.rootNamespace,
+        count: result.edges.length,
+        edges: result.edges,
+        nodes: result.nodes
+      };
+
+      return jsonResponse(payload, 200);
+    }
+    case "memory.relation.graph": {
+      const parsed = relationGraphInputSchema.parse(invocation.params ?? {});
+      let resolved: NamespaceResolution;
+      try {
+        resolved = resolveNamespace(context, {
+          namespace: parsed.namespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+      } catch (error) {
+        return jsonResponse(
+          { message: "Invalid namespace", detail: (error as Error).message },
+          400
+        );
+      }
+
+      const result = await store.relationGraph({
+        ownerId: context.ownerId,
+        namespace: resolved.namespace,
+        startMemoId: parsed.startMemoId,
+        maxDepth: parsed.maxDepth,
+        direction: parsed.direction,
+        tag: parsed.tag,
+        limit: parsed.limit
+      });
+
+      const payload: RelationGraphResponse = {
         namespace: resolved.namespace,
         rootNamespace: context.rootNamespace,
         count: result.edges.length,

@@ -6,7 +6,7 @@
 - 「理由付き関連付け」「重み付け」を持ったリンクを保存・検索できるようにすることで、高品質な回答や探索体験を提供することが狙い。
 
 ## 要求仕様
-- **ツール名**: `memory.relation.save`（ほか `relation.delete` / `relation.list` を追加予定）
+- **ツール名**: `memory.relation.save`（ほか `relation.delete` / `relation.list` / `relation.graph` を追加予定）
 - **入力項目**:
   - `sourceMemoId` (UUID): 元メモ ID
   - `targetMemoId` (UUID): 先メモ ID
@@ -20,7 +20,7 @@
   - `weight` は `0.0 <= weight <= 1.0`
   - 同一 `(ownerId, namespace, sourceMemoId, targetMemoId, tag)` の重複登録は禁止（`UPSERT` 時に更新）
 - **削除動作**: `memory.delete` でメモが削除された場合、source/destination いずれ側でも関連レコードをカスケード削除
-- **Export/Synchronization**: 将来的にグラフ構造として扱えるように、`relation.list` のレスポンスをノード/エッジ構成に拡張可能な JSON 形状にする
+- **Export/Synchronization**: 将来的にグラフ構造として扱えるように、`relation.list` のレスポンスをノード/エッジ構成に拡張可能な JSON 形状にする。`relation.graph` では探索経路を JSON 配列（`path`）として返却する。
 - **監査性**: `createdAt`, `updatedAt`, `version` を保持
 
 ## データモデリング

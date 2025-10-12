@@ -7,6 +7,7 @@ export {
   relationDeleteInputSchema,
   relationListInputSchema,
   relationSaveInputSchema,
+  relationGraphInputSchema,
   toolInvocationSchema,
   type SaveInput,
   type SearchInput,
@@ -15,5 +16,6 @@ export {
   type RelationDeleteInput,
   type RelationListInput,
   type RelationSaveInput,
+  type RelationGraphInput,
   type ToolInvocation
 } from "@mcp/shared";

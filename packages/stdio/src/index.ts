@@ -7,10 +7,12 @@ import {
   relationDeleteInputSchema,
   relationListInputSchema,
   relationSaveInputSchema,
+  relationGraphInputSchema,
   saveInputSchema,
   searchInputSchema,
   type DeleteInput,
   type ListNamespacesInput,
+  type RelationGraphInput,
   type MemoryDeleteResponse,
   type MemoryListNamespacesResponse,
   type MemoryEntry,
@@ -24,6 +26,8 @@ import {
   type RelationSaveInput,
   type RelationDeleteInput,
   type RelationListInput,
+  type RelationGraphResponse,
+  type RelationGraphEdge,
   type SaveInput,
   type SearchInput
 } from "./memorySchemas";
@@ -32,7 +36,7 @@ import { MemoryHttpBridge } from "./httpBridge";
 
 const serverInfo = {
   name: "memory-mcp",
-  version: "0.3.0"
+  version: "0.4.0"
 };
 
 type CliArgKey =
@@ -141,6 +145,15 @@ function nodeToPayload(node: RelationNode, rootHint?: string) {
     memoId: node.memoId,
     namespace: stripRootNamespace(node.namespace, rootHint),
     title: node.title
+  };
+}
+
+function graphEdgeToPayload(edge: RelationGraphEdge, rootHint?: string) {
+  return {
+    ...relationToPayload(edge, rootHint),
+    depth: edge.depth,
+    direction: edge.direction,
+    path: edge.path
   };
 }
 
@@ -318,6 +331,35 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
       };
     }
   );
+
+  server.registerTool(
+    "memory-relation-graph",
+    {
+      title: "Traverse memory relation graph",
+      description: "Perform a bounded-depth traversal over memo relations with directional control.",
+      inputSchema: relationGraphInputSchema.shape
+    },
+    async (args: unknown) => {
+      const parsed = relationGraphInputSchema.parse(args) as RelationGraphInput;
+      const result = await bridge.invoke<RelationGraphResponse>("memory.relation.graph", parsed);
+      const payload = {
+        status: "ok",
+        namespace: stripRootNamespace(result.namespace, result.rootNamespace),
+        count: result.count,
+        edges: result.edges.map((edge) => graphEdgeToPayload(edge, result.rootNamespace)),
+        nodes: result.nodes.map((node) => nodeToPayload(node, result.rootNamespace))
+      };
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(payload)
+          }
+        ]
+      };
+    }
+  );
 }
 
 async function main(): Promise<void> {
@@ -330,7 +372,7 @@ async function main(): Promise<void> {
       tools: {}
     },
     instructions:
-      "Use memory-save / memory-search / memory-delete / memory-list-namespaces for memo operations and memory-relation-save / memory-relation-delete / memory-relation-list to manage semantic links. Configure the HTTP backend URL and headers via environment variables."
+      "Use memory-save / memory-search / memory-delete / memory-list-namespaces for memo operations and memory-relation-save / memory-relation-delete / memory-relation-list / memory-relation-graph to manage and traverse semantic links. Configure the HTTP backend URL and headers via environment variables."
   });
 
   await registerTools(bridge, server);

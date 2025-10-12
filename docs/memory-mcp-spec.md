@@ -30,7 +30,8 @@
 3. **メモの検索**：
    - 類似度検索：クエリテキストに近いメモを取得。
    - メタデータ検索：キー・値の条件でフィルタリング。
-   - 混合検索：類似度上位からメタデータフィルタを適用。
+  - 混合検索：類似度上位からメタデータフィルタを適用。
+  - Pivot 検索：既存メモの埋め込みを基点に類似メモを抽出。
 4. **メモの削除**：不要になったメモを削除（オプション、権限前提）。
 
 ## 5. 全体アーキテクチャ
@@ -125,11 +126,14 @@
      - `query` (string, 任意：類似度検索に使用)
      - `metadata_filter` (object, 任意：部分一致/正確一致指定)
      - `k` (integer, デフォルト 10)
-     - `minimum_similarity` (float, 任意)
+     - `minimum_similarity` (float, 任意。`distance_metric = cosine` のときのみ有効)
+     - `pivot_memo_id` (uuid, 任意：指定時は該当メモの埋め込みで検索)
+     - `distance_metric` (enum: `cosine` | `l2`, 既定は `cosine`)
+     - `exclude_pivot` (boolean, 既定 true)
    - 出力：`items[]` 各オブジェクトに `memo_id`, `content`, `score`, `metadata`, `created_at`, `updated_at`。
    - 処理：
-     1. 類似検索用ベクトル生成（`query` がある場合）。
-     2. pgvector による `cosine_distance` ソート。
+     1. 類似検索用ベクトル生成（`query` がある場合）または pivot メモの `content_embedding` を取得。
+     2. pgvector による距離計算（`cosine` / `l2`）とソート。
      3. メタデータフィルタ適用（SQL `WHERE`）。
 
 3. **`memory.delete`**（オプションだが初期から用意）
@@ -161,6 +165,18 @@
   - 入力：`namespace` (任意), `sourceMemoId` / `targetMemoId` / `tag` (任意フィルタ), `limit` (1〜500)。
   - 出力：`edges[]`（リレーション一覧）と `nodes[]`（参照されたメモノード）。
   - 処理：条件一致した `memory_relations` を取得し、関連メモを `memory_entries` から引き当てる。
+
+7. **`memory.relation.graph`**
+  - 役割：起点メモからリレーションを深さ制限付きでトラバースし、路径情報を返却。
+  - 入力：
+    - `namespace` (任意)
+    - `startMemoId` (uuid, 必須)
+    - `direction` (enum: `forward` | `backward` | `both`、既定は `forward`)
+    - `maxDepth` (1〜10、既定 3)
+    - `tag` (任意フィルタ)
+    - `limit` (1〜1000)
+  - 出力：`edges[]` に `depth`, `direction`, `path`（JSON 配列）を含め、`nodes[]` は参照されたメモノード。
+  - 処理：PostgreSQL の再帰 CTE を用いて順方向・逆方向の探索を行い、ループを検出しながら限定件数を取得。
 
 ### エラーハンドリング指針
 - バリデーションエラー：`INVALID_ARGUMENT`。

@@ -60,6 +60,12 @@ export interface RelationNode {
   title?: string;
 }
 
+export interface RelationGraphEdge extends RelationEntry {
+  depth: number;
+  path: string[];
+  direction: "forward" | "backward";
+}
+
 export interface RelationSaveResponse {
   relation: RelationEntry;
   rootNamespace: string;
@@ -76,6 +82,14 @@ export interface RelationListResponse {
   rootNamespace: string;
   count: number;
   edges: RelationEntry[];
+  nodes: RelationNode[];
+}
+
+export interface RelationGraphResponse {
+  namespace: string;
+  rootNamespace: string;
+  count: number;
+  edges: RelationGraphEdge[];
   nodes: RelationNode[];
 }
 

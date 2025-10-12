@@ -2,14 +2,15 @@ import { describe, expect, it } from "bun:test";
 
 import { handleInvocation, type RequestContext } from "./index";
 import type { EnvVars } from "./env";
-import type { MemoryStore, RelationListResult, SearchResult } from "./db";
+import type { MemoryStore, RelationListResult, RelationGraphResult, SearchResult } from "./db";
 import type {
   MemoryEntry,
   MemoryListNamespacesResponse,
   MemorySaveResponse,
   MemorySearchResponse,
   RelationListResponse,
-  RelationSaveResponse
+  RelationSaveResponse,
+  RelationGraphResponse
 } from "@mcp/shared";
 
 const envStub: EnvVars = {
@@ -28,6 +29,7 @@ const makeVector = (value: number) => Array(1536).fill(value);
 
 const memoIdA = "00000000-0000-0000-0000-0000000000a1";
 const memoIdB = "00000000-0000-0000-0000-0000000000b2";
+const memoIdC = "00000000-0000-0000-0000-0000000000c3";
 const missingMemoId = "00000000-0000-0000-0000-0000000000ff";
 
 function createStoreStub(overrides: Partial<MemoryStore> = {}): MemoryStore {
@@ -77,6 +79,11 @@ function createStoreStub(overrides: Partial<MemoryStore> = {}): MemoryStore {
     ]
   };
 
+  const defaultRelationGraph: RelationGraphResult = {
+    edges: [],
+    nodes: []
+  };
+
   return {
     upsert: overrides.upsert ?? (async () => defaultMemo),
     search: overrides.search ?? (async () => defaultSearch),
@@ -84,7 +91,8 @@ function createStoreStub(overrides: Partial<MemoryStore> = {}): MemoryStore {
     listNamespaces: overrides.listNamespaces ?? (async () => defaultNamespaces),
     upsertRelation: overrides.upsertRelation ?? (async () => defaultRelation),
     deleteRelation: overrides.deleteRelation ?? (async () => defaultRelation),
-    listRelations: overrides.listRelations ?? (async () => defaultRelationList)
+    listRelations: overrides.listRelations ?? (async () => defaultRelationList),
+    relationGraph: overrides.relationGraph ?? (async () => defaultRelationGraph)
   } satisfies MemoryStore;
 }
 
@@ -132,6 +140,9 @@ describe("handleInvocation", () => {
           async search(params) {
             expect(params.ownerId).toBe(contextStub.ownerId);
             expect(params.namespace).toBe("legacy/projects/inbox");
+            expect(params.distanceMetric).toBe("cosine");
+            expect(params.pivotMemoId).toBe(undefined);
+            expect(params.excludePivot).toBe(true);
             return [
               {
                 memoId: memoIdB,
@@ -156,6 +167,84 @@ describe("handleInvocation", () => {
   expect(json.items[0].score).toBeCloseTo(0.8);
   expect(json.items[0].namespace).toBe("legacy/projects/inbox");
   expect(json.rootNamespace).toBe(contextStub.rootNamespace);
+  });
+
+  it("searches using pivot memo embedding", async () => {
+    const response = await handleInvocation(
+      { tool: "memory.search", params: { namespace: "default", pivotMemoId: memoIdA, k: 5 } },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.05),
+        store: createStoreStub({
+          async search(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
+            expect(params.namespace).toBe("legacy/DEF/default");
+            expect(params.embedding).toBe(undefined);
+            expect(params.pivotMemoId).toBe(memoIdA);
+            expect(params.excludePivot).toBe(true);
+            expect(params.distanceMetric).toBe("cosine");
+            return [
+              {
+                memoId: memoIdB,
+                namespace: params.namespace,
+                content: "Related memo",
+                metadata: {},
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                version: 2,
+                score: 0.95
+              }
+            ];
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as MemorySearchResponse;
+    expect(json.items).toHaveLength(1);
+    expect(json.items[0].memoId).toBe(memoIdB);
+    expect(json.items[0].score).toBeCloseTo(0.95);
+  });
+
+  it("rejects minimumSimilarity when using l2 metric", async () => {
+    const response = await handleInvocation(
+      {
+        tool: "memory.search",
+        params: { namespace: "default", distanceMetric: "l2", minimumSimilarity: 0.8 }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.05),
+        store: createStoreStub()
+      }
+    );
+
+    expect(response.status).toBe(400);
+  const json = (await response.json()) as { message: string };
+  expect(json.message.includes("minimumSimilarity")).toBe(true);
+  });
+
+  it("returns 404 when pivot memo is missing", async () => {
+    const response = await handleInvocation(
+      { tool: "memory.search", params: { namespace: "default", pivotMemoId: missingMemoId } },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async search() {
+            throw new Error("PIVOT_NOT_FOUND");
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(404);
+    const json = (await response.json()) as { message: string };
+    expect(json.message).toBe("Pivot memo not found");
   });
 
   it("returns 404 when deleting missing memo", async () => {
@@ -373,5 +462,93 @@ describe("handleInvocation", () => {
     expect(json.count).toBe(1);
     expect(json.edges[0].tag).toBe("supports");
     expect(json.nodes).toHaveLength(2);
+  });
+
+  it("traverses relation graph with directional control", async () => {
+    const response = await handleInvocation(
+      {
+        tool: "memory.relation.graph",
+        params: {
+          namespace: "default",
+          startMemoId: memoIdA,
+          maxDepth: 2,
+          direction: "both",
+          limit: 10
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async relationGraph(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
+            expect(params.namespace).toBe("legacy/DEF/default");
+            expect(params.startMemoId).toBe(memoIdA);
+            expect(params.direction).toBe("both");
+            expect(params.maxDepth).toBe(2);
+            expect(params.limit).toBe(10);
+            return {
+              edges: [
+                {
+                  namespace: "legacy/DEF/default",
+                  sourceMemoId: memoIdA,
+                  targetMemoId: memoIdB,
+                  tag: "supports",
+                  weight: 0.6,
+                  reason: "Memo A supports B",
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  version: 1,
+                  depth: 1,
+                  direction: "forward",
+                  path: [memoIdA, memoIdB]
+                },
+                {
+                  namespace: "legacy/DEF/default",
+                  sourceMemoId: memoIdB,
+                  targetMemoId: memoIdC,
+                  tag: "related",
+                  weight: 0.4,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  version: 1,
+                  depth: 2,
+                  direction: "forward",
+                  path: [memoIdA, memoIdB, memoIdC]
+                }
+              ],
+              nodes: [
+                {
+                  memoId: memoIdA,
+                  namespace: "legacy/DEF/default",
+                  title: "Memo A"
+                },
+                {
+                  memoId: memoIdB,
+                  namespace: "legacy/DEF/default",
+                  title: "Memo B"
+                },
+                {
+                  memoId: memoIdC,
+                  namespace: "legacy/DEF/default",
+                  title: "Memo C"
+                }
+              ]
+            } satisfies RelationGraphResult;
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as RelationGraphResponse;
+    expect(json.namespace).toBe("legacy/DEF/default");
+    expect(json.count).toBe(2);
+    expect(json.edges[0].depth).toBe(1);
+  expect(json.edges[1].path.length).toBe(3);
+  expect(json.edges[1].path[0]).toBe(memoIdA);
+  expect(json.edges[1].path[2]).toBe(memoIdC);
+    expect(json.nodes).toHaveLength(3);
   });
 });
