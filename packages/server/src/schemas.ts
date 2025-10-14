@@ -8,6 +8,7 @@ export {
   relationListInputSchema,
   relationSaveInputSchema,
   relationGraphInputSchema,
+  inferenceGuidanceInputSchema,
   toolInvocationSchema,
   type SaveInput,
   type SearchInput,
@@ -17,5 +18,6 @@ export {
   type RelationListInput,
   type RelationSaveInput,
   type RelationGraphInput,
+  type InferenceGuidanceInput,
   type ToolInvocation
 } from "@mcp/shared";

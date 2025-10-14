@@ -8,6 +8,7 @@ import {
   relationGraphInputSchema,
   relationListInputSchema,
   relationSaveInputSchema,
+  inferenceGuidanceInputSchema,
   saveInputSchema,
   searchInputSchema,
   toolInvocationSchema
@@ -25,7 +26,8 @@ import type {
   RelationDeleteResponse,
   RelationListResponse,
   RelationSaveResponse,
-  RelationGraphResponse
+  RelationGraphResponse,
+  MemoryInferenceGuidanceResponse
 } from "@mcp/shared";
 import type { ApiKeyContext } from "./auth.js";
 
@@ -335,6 +337,12 @@ export async function handleInvocation(
 
       return jsonResponse(payload, 200);
     }
+    case "memory.inference.guidance": {
+      const parsed = inferenceGuidanceInputSchema.parse(invocation.params ?? {});
+      const language = parsed.language === "ja" ? "ja" : "en";
+      const payload = buildInferenceGuidance(language);
+      return jsonResponse(payload, 200);
+    }
     default:
       return jsonResponse({ message: `Unsupported tool: ${invocation.tool}` }, 400);
   }
@@ -406,4 +414,131 @@ function extractNamespaceOverride(request: Request): string | undefined {
   if (!override) return undefined;
   const trimmed = override.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+const BASE_PREREQUISITES = [
+  "Configure MEMORY_HTTP_URL and authentication headers in the MCP client or scripts.",
+  "Confirm access to the namespace phase0/workspace/reasoning.",
+  "Install Bun and run bun install at repository root."
+] as const;
+
+const BASE_PHASES = [
+  {
+    id: "phase0",
+    title: "Phase 0 — Seed Review",
+    objective:
+      "Map out the namespaces and confirm the seeded memo graph before starting any reasoning task.",
+    documentation:
+      "1. Invoke memory-list-namespaces with {\"tool\":\"memory.list_namespaces\",\"params\":{\"namespace\":\"phase0\",\"depth\":3,\"limit\":50}} to enumerate accessible namespaces. 2. For each namespace you plan to use, call memory-search with {\"tool\":\"memory.search\",\"params\":{\"namespace\":\"phase0/workspace/reasoning\",\"k\":5}} to read the seeded memos and tags. 3. If you need the relation layout, call memory-relation-graph with {\"tool\":\"memory.relation.graph\",\"params\":{\"namespace\":\"phase0/workspace/reasoning\",\"startMemoId\":<pivot>,\"direction\":\"both\",\"maxDepth\":2}}.",
+    recommendedTools: ["memory-list-namespaces", "memory-search", "memory-relation-graph"],
+    scripts: [],
+    outputs: [
+      "Namespace inventory with default scope confirmed.",
+      "Baseline understanding of existing memos and relations."
+    ],
+    nextSteps: [
+      "Choose one or more pivot memos for further investigation.",
+      "Capture any gaps that require new memos via memory-save."
+    ]
+  },
+  {
+    id: "phase1",
+    title: "Phase 1 — Pivot Retrieval",
+    objective:
+      "Gather candidate evidence around a pivot memo using semantic similarity and relation traversal.",
+    documentation:
+      "1. Call memory-search with {\"tool\":\"memory.search\",\"params\":{\"namespace\":\"phase0/workspace/reasoning\",\"pivotMemoId\":<pivotId>,\"k\":8}} to retrieve semantic neighbors while excluding the pivot. 2. Immediately follow with memory-relation-graph using {\"tool\":\"memory.relation.graph\",\"params\":{\"namespace\":\"phase0/workspace/reasoning\",\"startMemoId\":<pivotId>,\"direction\":\"both\",\"maxDepth\":2,\"limit\":80}} to inspect linked memos and relation tags.",
+    recommendedTools: ["memory-search", "memory-relation-graph"],
+    scripts: [],
+    outputs: [
+      "Top-k semantic matches for the pivot memo.",
+      "Graph paths that explain how related memos connect."
+    ],
+    nextSteps: [
+      "Compile the retrieved memos into a working set for scoring.",
+      "Note which relation tags imply support versus conflict."
+    ]
+  },
+  {
+    id: "phase2",
+    title: "Phase 2 — Evidence Scoring",
+    objective:
+      "Prioritize candidate memos by combining similarity scores with relation weights and tags.",
+    documentation:
+      "For every memo surfaced in Phase 1, call memory-relation-list with {\"tool\":\"memory.relation.list\",\"params\":{\"namespace\":\"phase0/workspace/reasoning\",\"targetMemoId\":<candidateId>,\"limit\":50}} to collect relation weights and tags. Combine those weights with the similarity score returned from memory-search to compute a final ranking inside the LLM.",
+    recommendedTools: ["memory-search", "memory-relation-list"],
+    scripts: [],
+    outputs: [
+      "Ranked evidence table with combined confidence per memo.",
+      "Breakout of supporting, neutral, and conflicting relations."
+    ],
+    nextSteps: [
+      "Summarize high-value evidence into a structured report.",
+      "Prepare feedback prompts for relation adjustments if conflicts appear."
+    ]
+  },
+  {
+    id: "phase3",
+    title: "Phase 3 — Feedback Application",
+    objective:
+      "Apply structured updates to the relation graph based on evidence review or LLM critique.",
+    documentation:
+      "When the analysis suggests an update, call memory-relation-save with {\"tool\":\"memory.relation.save\",\"params\":{\"namespace\":\"phase0/workspace/reasoning\",\"sourceMemoId\":<sourceId>,\"targetMemoId\":<targetId>,\"tag\":<tag>,\"weight\":<0-1>,\"reason\":<text>}}. Remove invalid edges via memory-relation-delete using matching identifiers. Verify the new structure with memory-relation-graph before proceeding.",
+    recommendedTools: ["memory-relation-save", "memory-relation-delete", "memory-relation-graph"],
+    scripts: [],
+    outputs: [
+      "List of relation changes applied during the session.",
+      "Updated graph snapshot showing resolved conflicts."
+    ],
+    nextSteps: [
+      "Loop back to Phase 1 or 2 if major changes impact search context.",
+      "Log unresolved questions for human reviewers."
+    ]
+  },
+  {
+    id: "phase4",
+    title: "Phase 4 — Automation Sweep",
+    objective:
+      "Repeat the earlier phases across multiple pivots to monitor coverage and surface drift over time.",
+    documentation:
+      "Build a list of pivot memo IDs and iterate through it. For each pivot, repeat the Phase 1 and Phase 2 calls (memory-search with pivotMemoId and memory-relation-graph) and capture the evidence summaries. Aggregate the per-pivot results into a JSON report that downstream agents can consume without additional tooling.",
+    recommendedTools: ["memory-search", "memory-relation-graph"],
+    scripts: [],
+    outputs: [
+      "Per-pivot evidence digests and key relation changes.",
+      "Checklist of follow-up actions generated from conflicts or missing data."
+    ],
+    nextSteps: [
+      "Schedule periodic sweeps or trigger them when large updates land.",
+      "Share summaries with stakeholders or other MCP agents."
+    ]
+  }
+] satisfies MemoryInferenceGuidanceResponse["phases"];
+
+const BASE_AUTOMATION_NOTE =
+  "Use memory-search and memory-relation-graph on a schedule to refresh inference coverage for critical pivots.";
+
+const BASE_MAINTENANCE = [
+  "Add new memos and relations when product or research updates arrive.",
+  "Audit relation weights monthly to keep scoring trustworthy.",
+  "Version control feedback prompts alongside the docs to ensure reproducibility."
+] as const;
+
+const GUIDANCE_EN: Omit<MemoryInferenceGuidanceResponse, "language"> = {
+  summary:
+    "Use the memory.* tool set to walk through seed review, pivot retrieval, evidence scoring, feedback updates, and automation sweeps without relying on external documentation.",
+  prerequisites: [...BASE_PREREQUISITES],
+  phases: BASE_PHASES,
+  followUp: {
+    automation: BASE_AUTOMATION_NOTE,
+    maintenance: [...BASE_MAINTENANCE]
+  },
+  references: {
+    docs: [],
+    scripts: []
+  }
+};
+
+function buildInferenceGuidance(_language: "en" | "ja"): MemoryInferenceGuidanceResponse {
+  return { ...GUIDANCE_EN, language: "en" };
 }

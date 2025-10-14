@@ -93,4 +93,36 @@ export interface RelationGraphResponse {
   nodes: RelationNode[];
 }
 
+export interface InferenceGuidanceAction {
+  label: string;
+  command?: string;
+  description: string;
+}
+
+export interface InferenceGuidancePhase {
+  id: string;
+  title: string;
+  objective: string;
+  documentation: string;
+  recommendedTools: string[];
+  scripts: InferenceGuidanceAction[];
+  outputs: string[];
+  nextSteps: string[];
+}
+
+export interface MemoryInferenceGuidanceResponse {
+  language: "en" | "ja";
+  summary: string;
+  prerequisites: string[];
+  phases: InferenceGuidancePhase[];
+  followUp: {
+    automation: string;
+    maintenance: string[];
+  };
+  references: {
+    docs: string[];
+    scripts: string[];
+  };
+}
+
 export * from "./schemas";

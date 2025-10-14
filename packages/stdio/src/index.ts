@@ -8,6 +8,7 @@ import {
   relationListInputSchema,
   relationSaveInputSchema,
   relationGraphInputSchema,
+  inferenceGuidanceInputSchema,
   saveInputSchema,
   searchInputSchema,
   type DeleteInput,
@@ -29,7 +30,9 @@ import {
   type RelationGraphResponse,
   type RelationGraphEdge,
   type SaveInput,
-  type SearchInput
+  type SearchInput,
+  type InferenceGuidanceInput,
+  type MemoryInferenceGuidanceResponse
 } from "./memorySchemas";
 import { loadConfig } from "./config";
 import { MemoryHttpBridge } from "./httpBridge";
@@ -360,6 +363,32 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
       };
     }
   );
+
+  server.registerTool(
+    "memory-inference-guidance",
+    {
+      title: "Explain inference workflow",
+      description: "Summarize the Phase 0-4 inference workflow, scripts, and documentation references.",
+      inputSchema: inferenceGuidanceInputSchema.shape
+    },
+    async (args: unknown) => {
+      const parsed = inferenceGuidanceInputSchema.parse(args ?? {}) as InferenceGuidanceInput;
+      const result = await bridge.invoke<MemoryInferenceGuidanceResponse>("memory.inference.guidance", parsed);
+      const payload = {
+        status: "ok",
+        guidance: result
+      };
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(payload)
+          }
+        ]
+      };
+    }
+  );
 }
 
 async function main(): Promise<void> {
@@ -372,7 +401,7 @@ async function main(): Promise<void> {
       tools: {}
     },
     instructions:
-      "Use memory-save / memory-search / memory-delete / memory-list-namespaces for memo operations and memory-relation-save / memory-relation-delete / memory-relation-list / memory-relation-graph to manage and traverse semantic links. Configure the HTTP backend URL and headers via environment variables."
+      "Use memory-save / memory-search / memory-delete / memory-list-namespaces for memo operations and memory-relation-save / memory-relation-delete / memory-relation-list / memory-relation-graph to manage and traverse semantic links. Call memory-inference-guidance when you need a structured overview of the Phase 0-4 workflow. Configure the HTTP backend URL and headers via environment variables."
   });
 
   await registerTools(bridge, server);

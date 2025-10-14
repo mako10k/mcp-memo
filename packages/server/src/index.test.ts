@@ -10,7 +10,8 @@ import type {
   MemorySearchResponse,
   RelationListResponse,
   RelationSaveResponse,
-  RelationGraphResponse
+  RelationGraphResponse,
+  MemoryInferenceGuidanceResponse
 } from "@mcp/shared";
 
 const envStub: EnvVars = {
@@ -550,5 +551,43 @@ describe("handleInvocation", () => {
   expect(json.edges[1].path[0]).toBe(memoIdA);
   expect(json.edges[1].path[2]).toBe(memoIdC);
     expect(json.nodes).toHaveLength(3);
+  });
+
+  it("returns inference guidance summary", async () => {
+    const response = await handleInvocation(
+      { tool: "memory.inference.guidance", params: {} },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as MemoryInferenceGuidanceResponse;
+    expect(json.language).toBe("en");
+    expect(json.summary.includes("memory.* tool set")).toBe(true);
+    expect(json.phases.length >= 4).toBe(true);
+    expect(json.phases[0].id).toBe("phase0");
+    expect(json.references.docs).toHaveLength(0);
+    expect(json.references.scripts).toHaveLength(0);
+  });
+
+  it("ignores requested non-english language", async () => {
+    const response = await handleInvocation(
+      { tool: "memory.inference.guidance", params: { language: "ja" } },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as MemoryInferenceGuidanceResponse;
+    expect(json.language).toBe("en");
+    expect(json.summary.includes("memory.* tool set")).toBe(true);
   });
 });
