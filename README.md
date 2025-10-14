@@ -130,6 +130,8 @@ bun test
 - サーチ＋グラフ呼び出しをまとめる CLI: `bun run scripts/phase1Workflow.ts -- --pivot <memoId>`
 - スコアリングと優先度計算ヘルパー: `bun run scripts/phase2Scoring.ts -- --pivot <memoId>`
 - スコアリング手順と応答テンプレート: [`docs/inference-phase2.md`](docs/inference-phase2.md)
+- フィードバックループとタグ指向運用: [`docs/inference-phase3.md`](docs/inference-phase3.md)
+- 応答からリレーションを反映する CLI: `bun run scripts/phase3Feedback.ts -- --pivot <memoId>`
 
 ### Cloudflare Workers での準備
 
