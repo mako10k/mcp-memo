@@ -107,6 +107,15 @@ bun test
 | `MEMORY_HTTP_TIMEOUT_MS` | バックエンドへのタイムアウト（ミリ秒）。 | 任意 |
 | `MEMORY_NAMESPACE_DEFAULT` | 相対パス解決に用いるデフォルト名前空間（API キーの推奨値を上書き）。 | 任意 |
 
+### .env / .env.test の扱い
+
+- 本番・開発向けのシークレットは `.env` に記述し、リポジトリにはコミットしないでください。（`.gitignore` で除外済み）
+- テスト用の環境変数は `.env.test` に配置します。初回はルートにある `.env.test.example` をコピーして利用してください。
+  ```bash
+  cp .env.test.example .env.test
+  ```
+- テスト専用ファイルも `.gitignore` に含まれるため、実際の値はローカル管理に留めてください。
+
 ### MCP クライアントへの組み込み
 
 - **Claude Desktop / Cline**: `npm exec @mako10k/mcp-memo` をコマンドとして登録し、必要な環境変数を指定します。

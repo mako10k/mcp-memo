@@ -140,9 +140,9 @@
 メモリレーション基盤を活かし、LLM 向けに推論を支援する仕組みを段階的に構築する。以下ではシンプルな検証から複雑なワークフローまで段階を分けて整理する。
 
 ### フェーズ 0: 現状の確認とデータ整備
-- [ ] 代表的なメモ・リレーションを用意し、pivot 検索と relation graph が期待どおり動作するか手動チェック
-- [ ] 推論に使えるタグ命名規則を整備（例: supports / conflicts / explains）
-- [ ] テスト用メモにメタデータ（カテゴリ、作者など）を付与し、フィルタ活用の準備を行う
+- [x] 代表的なメモ・リレーションを `phase0/workspace/reasoning` に整備し、pivot 検索と relation graph を手動検証（詳細: `docs/inference-phase0.md`）
+- [x] 推論用タグ命名規則を `supports` / `conflicts` / `explains` に整理し、重み付けと理由の記述ルールを定義
+- [x] テスト用メモに `category` / `author` / `phase` / `tags` メタデータを付与し、名前空間内フィルタで動作確認
 
 ### フェーズ 1: シンプル推論テンプレート
 - [ ] LLM へ渡すテンプレートを作成（Pivot 情報・関連メモ・関係タグを列挙する JSON/Markdown）

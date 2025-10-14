@@ -3,6 +3,8 @@ node_modules/
 bun.lockb
 bun.lock
 .env
+.env.test
+.env.test.local
 .dev.vars
 logs/
 .wrangler/
