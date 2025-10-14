@@ -126,6 +126,7 @@ bun test
 ### 推論ワークフロー支援
 
 - 推論フロー全体の要約ツール: `memory-inference-guidance`（レスポンスは英語固定、`{"language":"ja"}` などの指定は無視します）
+- ガイダンスレスポンスのサンプル: [`docs/inference-guidance.md`](docs/inference-guidance.md)
 - フェーズ 0 の検証データセット: [`docs/inference-phase0.md`](docs/inference-phase0.md)
 - フェーズ 1 のテンプレートと手順: [`docs/inference-phase1.md`](docs/inference-phase1.md)
 - サーチ＋グラフ呼び出しをまとめる CLI: `bun run scripts/phase1Workflow.ts -- --pivot <memoId>`
