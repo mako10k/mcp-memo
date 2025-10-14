@@ -128,6 +128,8 @@ bun test
 - フェーズ 0 の検証データセット: [`docs/inference-phase0.md`](docs/inference-phase0.md)
 - フェーズ 1 のテンプレートと手順: [`docs/inference-phase1.md`](docs/inference-phase1.md)
 - サーチ＋グラフ呼び出しをまとめる CLI: `bun run scripts/phase1Workflow.ts -- --pivot <memoId>`
+- スコアリングと優先度計算ヘルパー: `bun run scripts/phase2Scoring.ts -- --pivot <memoId>`
+- スコアリング手順と応答テンプレート: [`docs/inference-phase2.md`](docs/inference-phase2.md)
 
 ### Cloudflare Workers での準備
 
