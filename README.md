@@ -132,6 +132,8 @@ bun test
 - スコアリング手順と応答テンプレート: [`docs/inference-phase2.md`](docs/inference-phase2.md)
 - フィードバックループとタグ指向運用: [`docs/inference-phase3.md`](docs/inference-phase3.md)
 - 応答からリレーションを反映する CLI: `bun run scripts/phase3Feedback.ts -- --pivot <memoId>`
+- 自動化・定期評価・外部同期ガイド: [`docs/inference-phase4.md`](docs/inference-phase4.md)
+- マルチ pivot を束ねるオーケストレータ: `bun run scripts/phase4Automation.ts -- --pivot <memoId>`
 
 ### Cloudflare Workers での準備
 
