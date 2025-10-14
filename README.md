@@ -123,6 +123,12 @@ bun test
 
 詳しい設定例は [`docs/clients.md`](docs/clients.md) を参照してください。
 
+### 推論ワークフロー支援
+
+- フェーズ 0 の検証データセット: [`docs/inference-phase0.md`](docs/inference-phase0.md)
+- フェーズ 1 のテンプレートと手順: [`docs/inference-phase1.md`](docs/inference-phase1.md)
+- サーチ＋グラフ呼び出しをまとめる CLI: `bun run scripts/phase1Workflow.ts -- --pivot <memoId>`
+
 ### Cloudflare Workers での準備
 
 Cloudflare 側の環境構築・証明書チェーンの取得方法を [`docs/cloudflare.md`](docs/cloudflare.md) にまとめました。初回デプロイ前に参照してください。

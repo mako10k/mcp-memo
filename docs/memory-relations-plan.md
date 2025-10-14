@@ -145,9 +145,9 @@
 - [x] テスト用メモに `category` / `author` / `phase` / `tags` メタデータを付与し、名前空間内フィルタで動作確認
 
 ### フェーズ 1: シンプル推論テンプレート
-- [ ] LLM へ渡すテンプレートを作成（Pivot 情報・関連メモ・関係タグを列挙する JSON/Markdown）
-- [ ] STDIO 経由で `memory-search` → `memory-relation-graph` を順番に叩くワークフローをスクリプト化
-- [ ] LLM から得た応答を `memory.save` に保存し、再利用できるようにする
+- [x] LLM へ渡すテンプレートを整備（`docs/inference-phase1.md` に Markdown/JSON 両対応の構造を記載）
+- [x] STDIO 経由で `memory-search` → `memory-relation-graph` を連結する補助スクリプトを追加（`scripts/phase1Workflow.ts`）
+- [x] LLM 応答を `memory.save` で保存するメタデータ規約と CLI 例を `docs/inference-phase1.md` にまとめ、`phase0/workspace/inference` への格納方針を提示
 
 ### フェーズ 2: スコアリングとエビデンス集約
 - [ ] 類似度スコアとリレーション重みを組み合わせた優先度計算ロジックを実装
