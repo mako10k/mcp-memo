@@ -79,6 +79,8 @@ export const inferenceGuidanceInputSchema = z.object({
   language: z.enum(["en", "ja"]).optional()
 });
 
+export const thinkInputSchema = z.record(z.any());
+
 export const toolInvocationSchema = z.object({
   tool: z.enum([
     "memory.save",
@@ -89,7 +91,8 @@ export const toolInvocationSchema = z.object({
     "memory.relation.delete",
     "memory.relation.list",
     "memory.relation.graph",
-    "memory.inference.guidance"
+    "memory.inference.guidance",
+    "think"
   ]),
   params: z.unknown().optional()
 });
@@ -103,6 +106,7 @@ export type RelationDeleteInput = z.infer<typeof relationDeleteInputSchema>;
 export type RelationListInput = z.infer<typeof relationListInputSchema>;
 export type RelationGraphInput = z.infer<typeof relationGraphInputSchema>;
 export type InferenceGuidanceInput = z.infer<typeof inferenceGuidanceInputSchema>;
+export type ThinkInput = z.infer<typeof thinkInputSchema>;
 export type ToolInvocation = z.infer<typeof toolInvocationSchema>;
 export type DistanceMetric = z.infer<typeof distanceMetricSchema>;
 export type RelationDirection = z.infer<typeof relationDirectionSchema>;

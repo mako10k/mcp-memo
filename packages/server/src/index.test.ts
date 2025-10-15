@@ -590,4 +590,20 @@ describe("handleInvocation", () => {
     expect(json.language).toBe("en");
     expect(json.summary.includes("memory.* tool set")).toBe(true);
   });
+
+  it("returns empty payload for think tool", async () => {
+    const response = await handleInvocation(
+      { tool: "think" as const, params: { topic: "Reflection", depth: 3 } },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub()
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as Record<string, unknown>;
+    expect(Object.keys(json).length).toBe(0);
+  });
 });

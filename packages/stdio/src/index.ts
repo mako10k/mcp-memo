@@ -32,7 +32,9 @@ import {
   type SaveInput,
   type SearchInput,
   type InferenceGuidanceInput,
-  type MemoryInferenceGuidanceResponse
+  type MemoryInferenceGuidanceResponse,
+  thinkInputSchema,
+  type ThinkInput
 } from "./memorySchemas";
 import { loadConfig } from "./config";
 import { MemoryHttpBridge } from "./httpBridge";
@@ -389,6 +391,23 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
       };
     }
   );
+
+  server.registerTool(
+    "think",
+    {
+      title: "Pause to reflect",
+      description: "Use this when you want the assistant to pause and reflect",
+      inputSchema: {
+        type: "object",
+        additionalProperties: true
+      }
+    },
+    async (args: unknown) => {
+      const parsed = thinkInputSchema.parse(args ?? {}) as ThinkInput;
+      await bridge.invoke("think", parsed);
+      return { content: [] };
+    }
+  );
 }
 
 async function main(): Promise<void> {
@@ -401,7 +420,7 @@ async function main(): Promise<void> {
       tools: {}
     },
     instructions:
-      "Use memory-save / memory-search / memory-delete / memory-list-namespaces for memo operations and memory-relation-save / memory-relation-delete / memory-relation-list / memory-relation-graph to manage and traverse semantic links. Call memory-inference-guidance when you need a structured overview of the Phase 0-4 workflow. Configure the HTTP backend URL and headers via environment variables."
+      "Use memory-save / memory-search / memory-delete / memory-list-namespaces for memo operations and memory-relation-save / memory-relation-delete / memory-relation-list / memory-relation-graph to manage and traverse semantic links. Call memory-inference-guidance when you need a structured overview of the Phase 0-4 workflow, and think when you want the assistant to pause and reflect without changing state. Configure the HTTP backend URL and headers via environment variables."
   });
 
   await registerTools(bridge, server);

@@ -35,6 +35,7 @@ memory-mcp
 - `memory-list-namespaces`
 - `memory-relation-save` / `memory-relation-delete` / `memory-relation-list` / `memory-relation-graph`
 - `memory-inference-guidance`（フェーズ 0〜4 のワークフロー概要を返すガイダンスレスポンス。常に英語で返却）
+- `think` (accepts arbitrary parameters and returns no response so you can insert a reflection pause)
 
 ## MCP クライアントへの追加
 

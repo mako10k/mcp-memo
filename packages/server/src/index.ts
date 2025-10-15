@@ -11,6 +11,7 @@ import {
   inferenceGuidanceInputSchema,
   saveInputSchema,
   searchInputSchema,
+  thinkInputSchema,
   toolInvocationSchema
 } from "./schemas";
 import { createApiKeyStore } from "./auth.js";
@@ -342,6 +343,10 @@ export async function handleInvocation(
       const language = parsed.language === "ja" ? "ja" : "en";
       const payload = buildInferenceGuidance(language);
       return jsonResponse(payload, 200);
+    }
+    case "think": {
+      thinkInputSchema.parse(invocation.params ?? {});
+      return jsonResponse({}, 200);
     }
     default:
       return jsonResponse({ message: `Unsupported tool: ${invocation.tool}` }, 400);
