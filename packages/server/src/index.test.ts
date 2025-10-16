@@ -11,13 +11,17 @@ import type {
   RelationListResponse,
   RelationSaveResponse,
   RelationGraphResponse,
-  MemoryInferenceGuidanceResponse
+  MemoryInferenceGuidanceResponse,
+  MemoryThinkSupportOutput
 } from "@mcp/shared";
 
 const envStub: EnvVars = {
   DATABASE_URL: "postgresql://user:pass@localhost/db",
   OPENAI_API_KEY: "test-key",
-  OPENAI_EMBEDDING_MODEL: "text-embedding-3-small"
+  OPENAI_EMBEDDING_MODEL: "text-embedding-3-small",
+  OPENAI_RESPONSES_MODEL: "gpt-5-nano",
+  OPENAI_BASE_URL: undefined,
+  OPENAI_RESPONSES_BASE_URL: undefined
 };
 
 const contextStub: RequestContext = {
@@ -572,6 +576,66 @@ describe("handleInvocation", () => {
     expect(json.phases[0].id).toBe("phase0");
     expect(json.references.docs).toHaveLength(0);
     expect(json.references.scripts).toHaveLength(0);
+  });
+
+  it("delegates memory.think.support to provided runner", async () => {
+    const runnerResponse: MemoryThinkSupportOutput = {
+      phase: "divergence",
+      ideas: [
+        {
+          id: "idea-1",
+          title: "Idea one",
+          summary: "First idea summary",
+          inspirationSource: "benchmark",
+          riskNotes: ["Needs validation"],
+          metadata: { category: "campaign" }
+        }
+      ],
+      coverage: "Explored onboarding challenges; mobile remains open",
+      nextRecommendation: "move to clustering",
+      warnings: ["Review technical feasibility"]
+    };
+
+    const response = await handleInvocation(
+      {
+        tool: "memory.think.support",
+        params: {
+          phase: "divergence",
+          topic: "Improve activation",
+          constraints: ["Launch within 4 weeks"],
+          seedAngles: ["Community-driven"],
+          ideas: [
+            {
+              id: "seed-1",
+              title: "Starter",
+              summary: "Existing idea",
+              metadata: { origin: "user" }
+            }
+          ]
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub(),
+        thinkSupport: async (input) => {
+          expect(input.phase).toBe("divergence");
+          expect(input.topic).toBe("Improve activation");
+          expect(input.seedAngles?.length).toBe(1);
+          expect(input.seedAngles?.[0]).toBe("Community-driven");
+          return runnerResponse;
+        }
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as MemoryThinkSupportOutput;
+    expect(json.phase).toBe("divergence");
+    if (json.phase === "divergence") {
+      expect(json.ideas).toHaveLength(1);
+    }
+    expect(json.nextRecommendation).toBe("move to clustering");
   });
 
   it("ignores requested non-english language", async () => {

@@ -4,7 +4,9 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   OPENAI_API_KEY: z.string().min(1, "OPENAI_API_KEY is required"),
   OPENAI_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
-  OPENAI_BASE_URL: z.string().url().optional()
+  OPENAI_BASE_URL: z.string().url().optional(),
+  OPENAI_RESPONSES_MODEL: z.string().default("gpt-5-nano"),
+  OPENAI_RESPONSES_BASE_URL: z.string().url().optional()
 });
 
 export type EnvVars = z.infer<typeof envSchema>;

@@ -11,6 +11,7 @@ import {
   inferenceGuidanceInputSchema,
   saveInputSchema,
   searchInputSchema,
+  memoryThinkSupportInputSchema,
   thinkInputSchema,
   toolInvocationSchema
 } from "./schemas";
@@ -18,7 +19,11 @@ import { createApiKeyStore } from "./auth.js";
 import { resolveNamespace, type NamespaceResolution } from "./namespace.js";
 
 import type { EnvVars } from "./env";
-import type { ToolInvocation } from "./schemas";
+import type {
+  MemoryThinkSupportInput,
+  MemoryThinkSupportOutput,
+  ToolInvocation
+} from "./schemas";
 import type {
   MemoryDeleteResponse,
   MemoryListNamespacesResponse,
@@ -31,10 +36,12 @@ import type {
   MemoryInferenceGuidanceResponse
 } from "@mcp/shared";
 import type { ApiKeyContext } from "./auth.js";
+import { createThinkSupportRunner } from "./thinkSupport";
 
 interface HandlerDependencies {
   store?: ReturnType<typeof createMemoryStore>;
   embed?: (input: string) => Promise<number[]>;
+  thinkSupport?: (input: MemoryThinkSupportInput) => Promise<MemoryThinkSupportOutput>;
 }
 
 export interface RequestContext extends ApiKeyContext {}
@@ -62,6 +69,7 @@ export async function handleInvocation(
   const store = dependencies.store ?? createMemoryStore(envVars);
   const embed =
     dependencies.embed ?? (async (input: string) => (await generateEmbedding(envVars, input)).vector);
+  const thinkSupport = dependencies.thinkSupport ?? createThinkSupportRunner(envVars);
 
   switch (invocation.tool) {
     case "memory.save": {
@@ -343,6 +351,11 @@ export async function handleInvocation(
       const language = parsed.language === "ja" ? "ja" : "en";
       const payload = buildInferenceGuidance(language);
       return jsonResponse(payload, 200);
+    }
+    case "memory.think.support": {
+      const parsed = memoryThinkSupportInputSchema.parse(invocation.params ?? {});
+      const result = await thinkSupport(parsed);
+      return jsonResponse(result, 200);
     }
     case "think": {
       thinkInputSchema.parse(invocation.params ?? {});

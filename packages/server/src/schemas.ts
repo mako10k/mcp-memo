@@ -9,6 +9,11 @@ export {
   relationSaveInputSchema,
   relationGraphInputSchema,
   inferenceGuidanceInputSchema,
+  memoryThinkSupportInputSchema,
+  memoryThinkSupportDivergenceOutputSchema,
+  memoryThinkSupportClusteringOutputSchema,
+  memoryThinkSupportConvergenceOutputSchema,
+  memoryThinkSupportOutputSchema,
   thinkInputSchema,
   toolInvocationSchema,
   type SaveInput,
@@ -20,6 +25,11 @@ export {
   type RelationSaveInput,
   type RelationGraphInput,
   type InferenceGuidanceInput,
+  type MemoryThinkSupportInput,
+  type MemoryThinkSupportDivergenceOutput,
+  type MemoryThinkSupportClusteringOutput,
+  type MemoryThinkSupportConvergenceOutput,
+  type MemoryThinkSupportOutput,
   type ThinkInput,
   type ToolInvocation
 } from "@mcp/shared";
