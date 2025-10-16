@@ -14,6 +14,10 @@ export {
   memoryThinkSupportClusteringOutputSchema,
   memoryThinkSupportConvergenceOutputSchema,
   memoryThinkSupportOutputSchema,
+  memoryThinkSupportDivergenceOutputJsonSchema,
+  memoryThinkSupportClusteringOutputJsonSchema,
+  memoryThinkSupportConvergenceOutputJsonSchema,
+  memoryThinkSupportOutputJsonSchema,
   thinkInputSchema,
   toolInvocationSchema,
   type SaveInput,
@@ -30,6 +34,10 @@ export {
   type MemoryThinkSupportClusteringOutput,
   type MemoryThinkSupportConvergenceOutput,
   type MemoryThinkSupportOutput,
+  type MemoryThinkSupportDivergenceOutputJsonSchema,
+  type MemoryThinkSupportClusteringOutputJsonSchema,
+  type MemoryThinkSupportConvergenceOutputJsonSchema,
+  type MemoryThinkSupportOutputJsonSchema,
   type ThinkInput,
   type ToolInvocation
 } from "@mcp/shared";

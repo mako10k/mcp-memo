@@ -179,6 +179,193 @@ export const memoryThinkSupportOutputSchema = z.discriminatedUnion("phase", [
   memoryThinkSupportConvergenceOutputSchema
 ]);
 
+const jsonStringMin1Schema = { type: "string", minLength: 1 } as const;
+const jsonStringArrayMin1Schema = {
+  type: "array",
+  items: jsonStringMin1Schema,
+  minItems: 1
+} as const;
+
+const thinkSupportMetadataJsonSchema = {
+  type: "object",
+  additionalProperties: true
+} as const;
+
+const thinkSupportIdeaJsonSchema = {
+  type: "object",
+  properties: {
+    id: jsonStringMin1Schema,
+    title: jsonStringMin1Schema,
+    summary: jsonStringMin1Schema,
+    inspirationSource: jsonStringMin1Schema,
+    riskNotes: jsonStringArrayMin1Schema,
+    metadata: thinkSupportMetadataJsonSchema
+  },
+  required: ["id", "title", "summary"],
+  additionalProperties: false
+} as const;
+
+const thinkSupportClusterJsonSchema = {
+  type: "object",
+  properties: {
+    clusterId: jsonStringMin1Schema,
+    label: jsonStringMin1Schema,
+    rationale: jsonStringMin1Schema,
+    memberIdeaIds: {
+      type: "array",
+      items: jsonStringMin1Schema,
+      minItems: 1
+    },
+    refinementPrompts: jsonStringArrayMin1Schema
+  },
+  required: ["clusterId", "label", "rationale", "memberIdeaIds"],
+  additionalProperties: false
+} as const;
+
+const thinkSupportOutlierJsonSchema = {
+  type: "object",
+  properties: {
+    ideaId: jsonStringMin1Schema,
+    note: jsonStringMin1Schema
+  },
+  required: ["ideaId", "note"],
+  additionalProperties: false
+} as const;
+
+const thinkSupportRankedIdeaJsonSchema = {
+  type: "object",
+  properties: {
+    ideaId: jsonStringMin1Schema,
+    scoreBreakdown: {
+      type: "object",
+      additionalProperties: { type: "number" }
+    },
+    overallRationale: jsonStringMin1Schema,
+    nextSteps: jsonStringArrayMin1Schema
+  },
+  required: ["ideaId", "scoreBreakdown", "overallRationale"],
+  additionalProperties: false
+} as const;
+
+const thinkSupportTradeoffJsonSchema = {
+  type: "object",
+  properties: {
+    ideaId: jsonStringMin1Schema,
+    risks: jsonStringArrayMin1Schema,
+    assumptions: jsonStringArrayMin1Schema,
+    validationTasks: jsonStringArrayMin1Schema
+  },
+  required: ["ideaId"],
+  additionalProperties: false
+} as const;
+
+const thinkSupportWarningsJsonSchema = {
+  type: "array",
+  items: jsonStringMin1Schema,
+  minItems: 1
+} as const;
+
+export const memoryThinkSupportDivergenceOutputJsonSchema = {
+  type: "object",
+  properties: {
+    phase: { const: "divergence" },
+    ideas: {
+      type: "array",
+      items: thinkSupportIdeaJsonSchema,
+      minItems: 1
+    },
+    coverage: jsonStringMin1Schema,
+    nextRecommendation: jsonStringMin1Schema,
+    warnings: thinkSupportWarningsJsonSchema
+  },
+  required: ["phase", "ideas", "coverage", "nextRecommendation"],
+  additionalProperties: false
+} as const;
+
+export const memoryThinkSupportClusteringOutputJsonSchema = {
+  type: "object",
+  properties: {
+    phase: { const: "clustering" },
+    clusters: {
+      type: "array",
+      items: thinkSupportClusterJsonSchema,
+      minItems: 1
+    },
+    outliers: {
+      type: "array",
+      items: thinkSupportOutlierJsonSchema,
+      minItems: 1
+    },
+    nextRecommendation: jsonStringMin1Schema,
+    warnings: thinkSupportWarningsJsonSchema
+  },
+  required: ["phase", "clusters", "nextRecommendation"],
+  additionalProperties: false
+} as const;
+
+export const memoryThinkSupportConvergenceOutputJsonSchema = {
+  type: "object",
+  properties: {
+    phase: { const: "convergence" },
+    rankedIdeas: {
+      type: "array",
+      items: thinkSupportRankedIdeaJsonSchema,
+      minItems: 1
+    },
+    tradeoffs: {
+      type: "array",
+      items: thinkSupportTradeoffJsonSchema,
+      minItems: 1
+    },
+    handoffSummary: jsonStringMin1Schema,
+    nextRecommendation: jsonStringMin1Schema,
+    warnings: thinkSupportWarningsJsonSchema
+  },
+  required: ["phase", "rankedIdeas", "handoffSummary", "nextRecommendation"],
+  additionalProperties: false
+} as const;
+
+export const memoryThinkSupportOutputJsonSchema = {
+  type: "object",
+  properties: {
+    phase: {
+      type: "string",
+      enum: ["divergence", "clustering", "convergence"]
+    },
+    ideas: {
+      type: "array",
+      items: thinkSupportIdeaJsonSchema,
+      minItems: 1
+    },
+    coverage: jsonStringMin1Schema,
+    clusters: {
+      type: "array",
+      items: thinkSupportClusterJsonSchema,
+      minItems: 1
+    },
+    outliers: {
+      type: "array",
+      items: thinkSupportOutlierJsonSchema,
+      minItems: 1
+    },
+    rankedIdeas: {
+      type: "array",
+      items: thinkSupportRankedIdeaJsonSchema,
+      minItems: 1
+    },
+    tradeoffs: {
+      type: "array",
+      items: thinkSupportTradeoffJsonSchema,
+      minItems: 1
+    },
+    handoffSummary: jsonStringMin1Schema,
+    nextRecommendation: jsonStringMin1Schema,
+    warnings: thinkSupportWarningsJsonSchema
+  },
+  required: ["phase"],
+  additionalProperties: false
+} as const;
+
 export const thinkInputSchema = z.object({}).passthrough();
 
 export const toolInvocationSchema = z.object({
@@ -215,7 +402,11 @@ export type MemoryThinkSupportDivergenceOutput = z.infer<typeof memoryThinkSuppo
 export type MemoryThinkSupportClusteringOutput = z.infer<typeof memoryThinkSupportClusteringOutputSchema>;
 export type MemoryThinkSupportConvergenceOutput = z.infer<typeof memoryThinkSupportConvergenceOutputSchema>;
 export type MemoryThinkSupportOutput = z.infer<typeof memoryThinkSupportOutputSchema>;
+export type MemoryThinkSupportDivergenceOutputJsonSchema = typeof memoryThinkSupportDivergenceOutputJsonSchema;
+export type MemoryThinkSupportClusteringOutputJsonSchema = typeof memoryThinkSupportClusteringOutputJsonSchema;
+export type MemoryThinkSupportConvergenceOutputJsonSchema = typeof memoryThinkSupportConvergenceOutputJsonSchema;
 export type ThinkInput = z.infer<typeof thinkInputSchema>;
 export type ToolInvocation = z.infer<typeof toolInvocationSchema>;
 export type DistanceMetric = z.infer<typeof distanceMetricSchema>;
 export type RelationDirection = z.infer<typeof relationDirectionSchema>;
+export type MemoryThinkSupportOutputJsonSchema = typeof memoryThinkSupportOutputJsonSchema;

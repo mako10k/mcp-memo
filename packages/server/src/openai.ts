@@ -48,10 +48,25 @@ export async function generateEmbedding(env: EnvVars, input: string): Promise<Em
   };
 }
 
+type ChatCompletionContentPart =
+  | { type: "text"; text: string }
+  | { type: "output_text"; text: string }
+  | { type: string; [key: string]: unknown };
+
+interface ChatCompletionToolCall {
+  id?: string;
+  type: string;
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+}
+
 interface ChatCompletionResponse {
   choices?: Array<{
     message?: {
-      content?: string;
+      content?: string | ChatCompletionContentPart[];
+      tool_calls?: ChatCompletionToolCall[];
     };
   }>;
 }
@@ -63,22 +78,50 @@ interface JsonChatCompletionOptions<T> {
   topP: number;
   maxOutputTokens: number;
   schema: z.ZodType<T>;
+  jsonSchema?: Record<string, unknown>;
+  toolName?: string;
+  toolDescription?: string;
+  reasoningEffort?: "minimal" | "low" | "medium" | "high";
 }
 
 export async function generateStructuredChatCompletion<T>(
   env: EnvVars,
   options: JsonChatCompletionOptions<T>
 ): Promise<T> {
+  const shouldForceTool = Boolean(options.jsonSchema);
+  const toolName = options.toolName ?? "submit_structured_output";
+  const toolDescription =
+    options.toolDescription ?? "Return the final structured result as a JSON object.";
+
   const body = {
     model: env.OPENAI_RESPONSES_MODEL,
     temperature: options.temperature,
     top_p: options.topP,
-    max_tokens: options.maxOutputTokens,
+    max_completion_tokens: options.maxOutputTokens,
     messages: [
       { role: "system", content: options.systemPrompt },
       { role: "user", content: options.userPrompt }
-    ],
-    response_format: { type: "json_object" }
+    ] as const,
+    ...(shouldForceTool && options.jsonSchema
+      ? {
+          tools: [
+            {
+              type: "function" as const,
+              function: {
+                name: toolName,
+                description: toolDescription,
+                parameters: options.jsonSchema
+              }
+            }
+          ],
+          tool_choice: {
+            type: "function" as const,
+            function: { name: toolName }
+          },
+          parallel_tool_calls: false
+        }
+      : {}),
+    ...(options.reasoningEffort ? { reasoning_effort: options.reasoningEffort } : {})
   };
 
   const endpoint = env.OPENAI_RESPONSES_BASE_URL ?? "https://api.openai.com/v1/chat/completions";
@@ -100,17 +143,60 @@ export async function generateStructuredChatCompletion<T>(
   }
 
   const json = (await response.json()) as ChatCompletionResponse;
-  const content = json.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("Chat completion returned no content");
-  }
-
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch (error) {
-    throw new Error(`Chat completion did not return valid JSON: ${(error as Error).message}`);
+
+  if (shouldForceTool && options.jsonSchema) {
+    const toolCalls = json.choices?.[0]?.message?.tool_calls ?? [];
+    const selectedCall =
+      toolCalls.find((call) => call.type === "function" && call.function?.name === toolName) ??
+      toolCalls[0];
+
+    const rawArguments = selectedCall?.function?.arguments;
+    if (!rawArguments) {
+      const serialized = JSON.stringify(json).slice(0, 2000);
+      throw new Error(`Chat completion returned no tool call arguments: ${serialized}`);
+    }
+
+    try {
+      parsed = JSON.parse(rawArguments);
+    } catch (error) {
+      throw new Error(
+        `Chat completion tool call arguments were not valid JSON: ${(error as Error).message}`
+      );
+    }
+  } else {
+    const messageContent = json.choices?.[0]?.message?.content;
+    let content: string | undefined;
+    if (typeof messageContent === "string") {
+      content = messageContent;
+    } else if (Array.isArray(messageContent)) {
+      const textChunk = messageContent.find((item) => {
+        if (item && typeof item === "object") {
+          if ("text" in item && typeof (item as { text?: unknown }).text === "string") {
+            return true;
+          }
+        }
+        return false;
+      }) as { text?: string } | undefined;
+      content = textChunk?.text;
+    }
+
+    if (!content) {
+      const serialized = JSON.stringify(json).slice(0, 2000);
+      throw new Error(`Chat completion returned no content: ${serialized}`);
+    }
+
+    try {
+      parsed = JSON.parse(content);
+    } catch (error) {
+      throw new Error(`Chat completion did not return valid JSON: ${(error as Error).message}`);
+    }
   }
 
-  return options.schema.parse(parsed);
+  try {
+    return options.schema.parse(parsed);
+  } catch (error) {
+    const detail = JSON.stringify(parsed).slice(0, 2000);
+    throw new Error(`Structured output failed validation: ${(error as Error).message} | payload=${detail}`);
+  }
 }
