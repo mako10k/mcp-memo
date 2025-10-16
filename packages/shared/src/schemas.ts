@@ -79,7 +79,7 @@ export const inferenceGuidanceInputSchema = z.object({
   language: z.enum(["en", "ja"]).optional()
 });
 
-export const thinkInputSchema = z.object({}).catchall(z.unknown());
+export const thinkInputSchema = z.object({}).passthrough();
 
 export const toolInvocationSchema = z.object({
   tool: z.enum([

@@ -392,22 +392,19 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
     }
   );
 
-  server.registerTool(
+  const thinkTool = server.registerTool(
     "think",
     {
       title: "Pause to reflect",
-      description: "Use this when you want the assistant to pause and reflect",
-      inputSchema: {
-        type: "object",
-        additionalProperties: true
-      }
+      description: "Use this when you want the assistant to pause and reflect"
     },
     async (args: unknown) => {
-      const parsed = thinkInputSchema.parse(args ?? {}) as ThinkInput;
+      const parsed = thinkInputSchema.parse(args ?? {});
       await bridge.invoke("think", parsed);
       return { content: [] };
     }
-  );
+  ) as unknown as { inputSchema?: typeof thinkInputSchema };
+  thinkTool.inputSchema = thinkInputSchema;
 }
 
 async function main(): Promise<void> {
