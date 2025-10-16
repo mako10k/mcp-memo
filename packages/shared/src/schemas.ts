@@ -179,6 +179,16 @@ export const memoryThinkSupportOutputSchema = z.discriminatedUnion("phase", [
   memoryThinkSupportConvergenceOutputSchema
 ]);
 
+export const tweetInputSchema = z.object({
+  text: z.string().min(1).max(500),
+  language: z.enum(["en", "ja"]).optional()
+});
+
+export const tweetReactionOutputSchema = z.object({
+  reaction: z.string().min(1),
+  language: z.enum(["en", "ja"]).optional()
+});
+
 const jsonStringMin1Schema = { type: "string", minLength: 1 } as const;
 const jsonStringArrayMin1Schema = {
   type: "array",
@@ -325,6 +335,19 @@ export const memoryThinkSupportConvergenceOutputJsonSchema = {
   additionalProperties: false
 } as const;
 
+export const tweetReactionOutputJsonSchema = {
+  type: "object",
+  properties: {
+    reaction: jsonStringMin1Schema,
+    language: {
+      type: "string",
+      enum: ["en", "ja"]
+    }
+  },
+  required: ["reaction"],
+  additionalProperties: false
+} as const;
+
 export const memoryThinkSupportOutputJsonSchema = {
   type: "object",
   properties: {
@@ -380,6 +403,7 @@ export const toolInvocationSchema = z.object({
     "memory.relation.graph",
     "memory.inference.guidance",
     "memory.think.support",
+    "tweet",
     "think"
   ]),
   params: z.unknown().optional()
@@ -402,9 +426,12 @@ export type MemoryThinkSupportDivergenceOutput = z.infer<typeof memoryThinkSuppo
 export type MemoryThinkSupportClusteringOutput = z.infer<typeof memoryThinkSupportClusteringOutputSchema>;
 export type MemoryThinkSupportConvergenceOutput = z.infer<typeof memoryThinkSupportConvergenceOutputSchema>;
 export type MemoryThinkSupportOutput = z.infer<typeof memoryThinkSupportOutputSchema>;
+export type TweetInput = z.infer<typeof tweetInputSchema>;
+export type TweetReactionOutput = z.infer<typeof tweetReactionOutputSchema>;
 export type MemoryThinkSupportDivergenceOutputJsonSchema = typeof memoryThinkSupportDivergenceOutputJsonSchema;
 export type MemoryThinkSupportClusteringOutputJsonSchema = typeof memoryThinkSupportClusteringOutputJsonSchema;
 export type MemoryThinkSupportConvergenceOutputJsonSchema = typeof memoryThinkSupportConvergenceOutputJsonSchema;
+export type TweetReactionOutputJsonSchema = typeof tweetReactionOutputJsonSchema;
 export type ThinkInput = z.infer<typeof thinkInputSchema>;
 export type ToolInvocation = z.infer<typeof toolInvocationSchema>;
 export type DistanceMetric = z.infer<typeof distanceMetricSchema>;

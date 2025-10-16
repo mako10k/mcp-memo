@@ -12,7 +12,8 @@ import type {
   RelationSaveResponse,
   RelationGraphResponse,
   MemoryInferenceGuidanceResponse,
-  MemoryThinkSupportOutput
+  MemoryThinkSupportOutput,
+  TweetReactionOutput
 } from "@mcp/shared";
 
 const envStub: EnvVars = {
@@ -334,6 +335,31 @@ describe("handleInvocation", () => {
     );
 
     expect(response.status).toBe(400);
+  });
+
+  it("returns tweet reaction", async () => {
+    const reaction: TweetReactionOutput = {
+      reaction: "Love the energy! Can't wait to see this bloom.",
+      language: "en"
+    };
+
+    const response = await handleInvocation(
+      { tool: "tweet", params: { text: "Launch day for our community garden", language: "en" } },
+      envStub,
+      contextStub,
+      {
+        tweetReact: async (input) => {
+          expect(input.text.includes("community garden")).toBe(true);
+          expect(input.language).toBe("en");
+          return reaction;
+        }
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as TweetReactionOutput;
+    expect(json.reaction).toBe(reaction.reaction);
+    expect(json.language).toBe("en");
   });
 
   it("saves memory relation", async () => {

@@ -12,6 +12,7 @@ import {
   saveInputSchema,
   searchInputSchema,
   memoryThinkSupportInputSchema,
+  tweetInputSchema,
   thinkInputSchema,
   toolInvocationSchema
 } from "./schemas";
@@ -22,6 +23,8 @@ import type { EnvVars } from "./env";
 import type {
   MemoryThinkSupportInput,
   MemoryThinkSupportOutput,
+  TweetInput,
+  TweetReactionOutput,
   ToolInvocation
 } from "./schemas";
 import type {
@@ -37,11 +40,13 @@ import type {
 } from "@mcp/shared";
 import type { ApiKeyContext } from "./auth.js";
 import { createThinkSupportRunner } from "./thinkSupport";
+import { createTweetReactor } from "./tweet";
 
 interface HandlerDependencies {
   store?: ReturnType<typeof createMemoryStore>;
   embed?: (input: string) => Promise<number[]>;
   thinkSupport?: (input: MemoryThinkSupportInput) => Promise<MemoryThinkSupportOutput>;
+  tweetReact?: (input: TweetInput) => Promise<TweetReactionOutput>;
 }
 
 export interface RequestContext extends ApiKeyContext {}
@@ -70,6 +75,7 @@ export async function handleInvocation(
   const embed =
     dependencies.embed ?? (async (input: string) => (await generateEmbedding(envVars, input)).vector);
   const thinkSupport = dependencies.thinkSupport ?? createThinkSupportRunner(envVars);
+  const tweetReact = dependencies.tweetReact ?? createTweetReactor(envVars);
 
   switch (invocation.tool) {
     case "memory.save": {
@@ -355,6 +361,11 @@ export async function handleInvocation(
     case "memory.think.support": {
       const parsed = memoryThinkSupportInputSchema.parse(invocation.params ?? {});
       const result = await thinkSupport(parsed);
+      return jsonResponse(result, 200);
+    }
+    case "tweet": {
+      const parsed = tweetInputSchema.parse(invocation.params ?? {});
+      const result = await tweetReact(parsed);
       return jsonResponse(result, 200);
     }
     case "think": {

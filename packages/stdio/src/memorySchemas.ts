@@ -305,6 +305,16 @@ export const memoryThinkSupportOutputSchema = z.discriminatedUnion("phase", [
   memoryThinkSupportConvergenceOutputSchema
 ]);
 
+export const tweetInputSchema = z.object({
+  text: z.string().min(1).max(500),
+  language: z.enum(["en", "ja"]).optional()
+});
+
+export const tweetReactionOutputSchema = z.object({
+  reaction: z.string().min(1),
+  language: z.enum(["en", "ja"]).optional()
+});
+
 export const thinkInputSchema = z.object({}).passthrough();
 
 export const toolInvocationSchema = z.object({
@@ -319,6 +329,7 @@ export const toolInvocationSchema = z.object({
     "memory.relation.graph",
     "memory.inference.guidance",
     "memory.think.support",
+    "tweet",
     "think"
   ]),
   params: z.unknown().optional()
@@ -341,6 +352,8 @@ export type MemoryThinkSupportDivergenceOutput = z.infer<typeof memoryThinkSuppo
 export type MemoryThinkSupportClusteringOutput = z.infer<typeof memoryThinkSupportClusteringOutputSchema>;
 export type MemoryThinkSupportConvergenceOutput = z.infer<typeof memoryThinkSupportConvergenceOutputSchema>;
 export type MemoryThinkSupportOutput = z.infer<typeof memoryThinkSupportOutputSchema>;
+export type TweetInput = z.infer<typeof tweetInputSchema>;
+export type TweetReactionOutput = z.infer<typeof tweetReactionOutputSchema>;
 export type ThinkInput = z.infer<typeof thinkInputSchema>;
 export type ToolInvocation = z.infer<typeof toolInvocationSchema>;
 export type DistanceMetric = z.infer<typeof distanceMetricSchema>;

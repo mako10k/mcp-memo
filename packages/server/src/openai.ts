@@ -74,8 +74,8 @@ interface ChatCompletionResponse {
 interface JsonChatCompletionOptions<T> {
   systemPrompt: string;
   userPrompt: string;
-  temperature: number;
-  topP: number;
+  temperature?: number;
+  topP?: number;
   maxOutputTokens: number;
   schema: z.ZodType<T>;
   jsonSchema?: Record<string, unknown>;
@@ -95,13 +95,13 @@ export async function generateStructuredChatCompletion<T>(
 
   const body = {
     model: env.OPENAI_RESPONSES_MODEL,
-    temperature: options.temperature,
-    top_p: options.topP,
     max_completion_tokens: options.maxOutputTokens,
     messages: [
       { role: "system", content: options.systemPrompt },
       { role: "user", content: options.userPrompt }
     ] as const,
+    ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
+    ...(typeof options.topP === "number" ? { top_p: options.topP } : {}),
     ...(shouldForceTool && options.jsonSchema
       ? {
           tools: [

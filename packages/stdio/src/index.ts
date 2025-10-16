@@ -10,6 +10,8 @@ import {
   relationGraphInputSchema,
   inferenceGuidanceInputSchema,
   memoryThinkSupportInputSchema,
+  tweetInputSchema,
+  tweetReactionOutputSchema,
   saveInputSchema,
   searchInputSchema,
   type DeleteInput,
@@ -36,6 +38,8 @@ import {
   type MemoryInferenceGuidanceResponse,
   type MemoryThinkSupportInput,
   type MemoryThinkSupportOutput,
+  type TweetInput,
+  type TweetReactionOutput,
   thinkInputSchema,
   type ThinkInput
 } from "./memorySchemas";
@@ -428,6 +432,33 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
     }
   );
 
+  server.registerTool(
+    "tweet",
+    {
+      title: "React to a tweet",
+      description: "Send a short tweet and receive a quick reaction crafted by gpt-5-nano.",
+      inputSchema: tweetInputSchema.shape
+    },
+    async (args: unknown) => {
+      const parsed = tweetInputSchema.parse(args ?? {}) as TweetInput;
+      const result = await bridge.invoke<TweetReactionOutput>("tweet", parsed);
+      const payload = {
+        status: "ok",
+        reaction: result.reaction,
+        ...(result.language ? { language: result.language } : {})
+      };
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(payload)
+          }
+        ]
+      };
+    }
+  );
+
   const thinkTool = server.registerTool(
     "think",
     {
@@ -453,7 +484,7 @@ async function main(): Promise<void> {
       tools: {}
     },
     instructions:
-      "Use memory-save / memory-search / memory-delete / memory-list-namespaces for memo operations and memory-relation-save / memory-relation-delete / memory-relation-list / memory-relation-graph to manage and traverse semantic links. Call memory-inference-guidance for the Phase 0-4 workflow overview, memory-think-support to run divergent/clustering/convergent brainstorming with gpt-5-nano, and think when you want the assistant to pause and reflect without changing state. Configure the HTTP backend URL and headers via environment variables."
+      "Use memory-save / memory-search / memory-delete / memory-list-namespaces for memo operations and memory-relation-save / memory-relation-delete / memory-relation-list / memory-relation-graph to manage and traverse semantic links. Call memory-inference-guidance for the Phase 0-4 workflow overview, memory-think-support to run divergent/clustering/convergent brainstorming with gpt-5-nano, tweet to request a quick reaction to microblog content, and think when you want the assistant to pause and reflect without changing state. Configure the HTTP backend URL and headers via environment variables."
   });
 
   await registerTools(bridge, server);
