@@ -9,6 +9,7 @@ import {
   relationSaveInputSchema,
   relationGraphInputSchema,
   inferenceGuidanceInputSchema,
+  memoryThinkSupportInputSchema,
   saveInputSchema,
   searchInputSchema,
   type DeleteInput,
@@ -33,6 +34,8 @@ import {
   type SearchInput,
   type InferenceGuidanceInput,
   type MemoryInferenceGuidanceResponse,
+  type MemoryThinkSupportInput,
+  type MemoryThinkSupportOutput,
   thinkInputSchema,
   type ThinkInput
 } from "./memorySchemas";
@@ -159,6 +162,13 @@ function graphEdgeToPayload(edge: RelationGraphEdge, rootHint?: string) {
     depth: edge.depth,
     direction: edge.direction,
     path: edge.path
+  };
+}
+
+function thinkSupportToPayload(output: MemoryThinkSupportOutput) {
+  return {
+    phase: output.phase,
+    details: output
   };
 }
 
@@ -392,6 +402,32 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
     }
   );
 
+  server.registerTool(
+    "memory-think-support",
+    {
+      title: "Facilitate brainstorming phases",
+      description: "Guide divergent, clustering, and convergent brainstorming with structured outputs.",
+      inputSchema: memoryThinkSupportInputSchema.shape
+    },
+    async (args: unknown) => {
+      const parsed = memoryThinkSupportInputSchema.parse(args ?? {}) as MemoryThinkSupportInput;
+      const result = await bridge.invoke<MemoryThinkSupportOutput>("memory.think.support", parsed);
+      const payload = {
+        status: "ok",
+        support: thinkSupportToPayload(result)
+      };
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(payload)
+          }
+        ]
+      };
+    }
+  );
+
   const thinkTool = server.registerTool(
     "think",
     {
@@ -417,7 +453,7 @@ async function main(): Promise<void> {
       tools: {}
     },
     instructions:
-      "Use memory-save / memory-search / memory-delete / memory-list-namespaces for memo operations and memory-relation-save / memory-relation-delete / memory-relation-list / memory-relation-graph to manage and traverse semantic links. Call memory-inference-guidance when you need a structured overview of the Phase 0-4 workflow, and think when you want the assistant to pause and reflect without changing state. Configure the HTTP backend URL and headers via environment variables."
+      "Use memory-save / memory-search / memory-delete / memory-list-namespaces for memo operations and memory-relation-save / memory-relation-delete / memory-relation-list / memory-relation-graph to manage and traverse semantic links. Call memory-inference-guidance for the Phase 0-4 workflow overview, memory-think-support to run divergent/clustering/convergent brainstorming with gpt-5-nano, and think when you want the assistant to pause and reflect without changing state. Configure the HTTP backend URL and headers via environment variables."
   });
 
   await registerTools(bridge, server);

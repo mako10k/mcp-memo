@@ -77,5 +77,6 @@
 - [x] ハンドラのユニットテスト作成（Bun Test / 依存注入）
 - [x] Bun 依存関係インストール（ローカル環境）
 - [x] GitHub Actions CI（テスト自動化）導入
+- [ ] memory-think-support ツール実装（設計: docs/memory-think-support.md）
 - [ ] 実 DB / E2E テスト
 - [ ] 自動デプロイ（本番環境への恒常運用）

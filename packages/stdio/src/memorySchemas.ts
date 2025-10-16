@@ -205,6 +205,106 @@ export const inferenceGuidanceInputSchema = z.object({
   language: z.enum(["en", "ja"]).optional()
 });
 
+const thinkSupportPhaseSchema = z.enum(["divergence", "clustering", "convergence"]);
+
+const thinkSupportIdeaInputSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  metadata: metadataSchema.optional()
+});
+
+const thinkSupportEvaluationCriterionSchema = z.object({
+  name: z.string().min(1),
+  definition: z.string().min(1),
+  weight: z.coerce.number().min(0).max(1).optional()
+});
+
+const thinkSupportCandidateClusterSchema = z.object({
+  clusterId: z.string().min(1),
+  label: z.string().min(1),
+  summary: z.string().min(1),
+  memberIdeaIds: z.array(z.string().min(1)).min(1)
+});
+
+export const memoryThinkSupportInputSchema = z
+  .object({
+    phase: thinkSupportPhaseSchema,
+    topic: z.string().min(1),
+    constraints: z.array(z.string().min(1)).optional(),
+    seedAngles: z.array(z.string().min(1)).optional(),
+    ideas: z.array(thinkSupportIdeaInputSchema).optional(),
+    evaluationCriteria: z.array(thinkSupportEvaluationCriterionSchema).optional(),
+    criteria: z.array(z.string().min(1)).optional(),
+    candidateIdeaIds: z.array(z.string().min(1)).optional(),
+    candidateClusters: z.array(thinkSupportCandidateClusterSchema).optional(),
+    humanShortlist: z.array(z.string().min(1)).optional()
+  })
+  .passthrough();
+
+const thinkSupportIdeaSchema = thinkSupportIdeaInputSchema.extend({
+  inspirationSource: z.string().min(1).optional(),
+  riskNotes: z.array(z.string().min(1)).optional()
+});
+
+const thinkSupportClusterSchema = z.object({
+  clusterId: z.string().min(1),
+  label: z.string().min(1),
+  rationale: z.string().min(1),
+  memberIdeaIds: z.array(z.string().min(1)).min(1),
+  refinementPrompts: z.array(z.string().min(1)).optional()
+});
+
+const thinkSupportOutlierSchema = z.object({
+  ideaId: z.string().min(1),
+  note: z.string().min(1)
+});
+
+const thinkSupportRankedIdeaSchema = z.object({
+  ideaId: z.string().min(1),
+  scoreBreakdown: z.record(z.number()),
+  overallRationale: z.string().min(1),
+  nextSteps: z.array(z.string().min(1)).optional()
+});
+
+const thinkSupportTradeoffSchema = z.object({
+  ideaId: z.string().min(1),
+  risks: z.array(z.string().min(1)).optional(),
+  assumptions: z.array(z.string().min(1)).optional(),
+  validationTasks: z.array(z.string().min(1)).optional()
+});
+
+export const memoryThinkSupportDivergenceOutputSchema = z.object({
+  phase: z.literal("divergence"),
+  ideas: z.array(thinkSupportIdeaSchema).min(1),
+  coverage: z.string().min(1),
+  nextRecommendation: z.string().min(1),
+  warnings: z.array(z.string().min(1)).optional()
+});
+
+export const memoryThinkSupportClusteringOutputSchema = z.object({
+  phase: z.literal("clustering"),
+  clusters: z.array(thinkSupportClusterSchema).min(1),
+  outliers: z.array(thinkSupportOutlierSchema).optional(),
+  nextRecommendation: z.string().min(1),
+  warnings: z.array(z.string().min(1)).optional()
+});
+
+export const memoryThinkSupportConvergenceOutputSchema = z.object({
+  phase: z.literal("convergence"),
+  rankedIdeas: z.array(thinkSupportRankedIdeaSchema).min(1),
+  tradeoffs: z.array(thinkSupportTradeoffSchema).optional(),
+  handoffSummary: z.string().min(1),
+  nextRecommendation: z.string().min(1).optional(),
+  warnings: z.array(z.string().min(1)).optional()
+});
+
+export const memoryThinkSupportOutputSchema = z.discriminatedUnion("phase", [
+  memoryThinkSupportDivergenceOutputSchema,
+  memoryThinkSupportClusteringOutputSchema,
+  memoryThinkSupportConvergenceOutputSchema
+]);
+
 export const thinkInputSchema = z.object({}).passthrough();
 
 export const toolInvocationSchema = z.object({
@@ -218,6 +318,7 @@ export const toolInvocationSchema = z.object({
     "memory.relation.list",
     "memory.relation.graph",
     "memory.inference.guidance",
+    "memory.think.support",
     "think"
   ]),
   params: z.unknown().optional()
@@ -232,6 +333,14 @@ export type RelationDeleteInput = z.infer<typeof relationDeleteInputSchema>;
 export type RelationListInput = z.infer<typeof relationListInputSchema>;
 export type RelationGraphInput = z.infer<typeof relationGraphInputSchema>;
 export type InferenceGuidanceInput = z.infer<typeof inferenceGuidanceInputSchema>;
+export type MemoryThinkSupportPhase = z.infer<typeof thinkSupportPhaseSchema>;
+export type MemoryThinkSupportInput = z.infer<typeof memoryThinkSupportInputSchema>;
+export type MemoryThinkSupportIdea = z.infer<typeof thinkSupportIdeaSchema>;
+export type MemoryThinkSupportCluster = z.infer<typeof thinkSupportClusterSchema>;
+export type MemoryThinkSupportDivergenceOutput = z.infer<typeof memoryThinkSupportDivergenceOutputSchema>;
+export type MemoryThinkSupportClusteringOutput = z.infer<typeof memoryThinkSupportClusteringOutputSchema>;
+export type MemoryThinkSupportConvergenceOutput = z.infer<typeof memoryThinkSupportConvergenceOutputSchema>;
+export type MemoryThinkSupportOutput = z.infer<typeof memoryThinkSupportOutputSchema>;
 export type ThinkInput = z.infer<typeof thinkInputSchema>;
 export type ToolInvocation = z.infer<typeof toolInvocationSchema>;
 export type DistanceMetric = z.infer<typeof distanceMetricSchema>;
