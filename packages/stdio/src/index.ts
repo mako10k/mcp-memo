@@ -4,6 +4,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   deleteInputSchema,
   listNamespacesInputSchema,
+  memoryPropertyInputSchema,
+  memoryPropertyDeleteInputSchema,
+  memoryListInputSchema,
   namespaceRenameInputSchema,
   relationDeleteInputSchema,
   relationListInputSchema,
@@ -20,6 +23,8 @@ import {
   type RelationGraphInput,
   type MemoryDeleteResponse,
   type MemoryListNamespacesResponse,
+  type MemoryPropertyResponse,
+  type MemoryListResponse,
   type MemoryNamespaceRenameResponse,
   type MemoryEntry,
   type MemorySaveResponse,
@@ -40,6 +45,9 @@ import {
   type MemoryInferenceGuidanceResponse,
   type MemoryThinkSupportInput,
   type MemoryThinkSupportOutput,
+  type MemoryPropertyInput,
+  type MemoryPropertyDeleteInput,
+  type MemoryListInput,
   type NamespaceRenameInput,
   type TweetInput,
   type TweetReactionOutput,
@@ -286,6 +294,81 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
       updatedCount: result.updatedCount,
       memoIds: result.memoIds,
       relationCount: result.relationCount
+    };
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(payload)
+        }
+      ]
+    };
+  });
+
+  server.registerTool("memory-property", {
+    title: "Set memo metadata property",
+    description: "Update a metadata property for a memo within the specified namespace.",
+    inputSchema: memoryPropertyInputSchema.shape
+  }, async (args: unknown) => {
+    const parsed = memoryPropertyInputSchema.parse(args) as MemoryPropertyInput;
+    const result = await bridge.invoke<MemoryPropertyResponse>("memory.property", parsed);
+    const payload = {
+      status: "ok",
+      property: result.property,
+      memo: memoToPayload(result.memo, result.rootNamespace)
+    };
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(payload)
+        }
+      ]
+    };
+  });
+
+  server.registerTool("memory-property-delete", {
+    title: "Delete memo metadata property",
+    description: "Remove a metadata property from a memo within the specified namespace.",
+    inputSchema: memoryPropertyDeleteInputSchema.shape
+  }, async (args: unknown) => {
+    const parsed = memoryPropertyDeleteInputSchema.parse(args) as MemoryPropertyDeleteInput;
+    const result = await bridge.invoke<MemoryPropertyResponse>("memory.property.delete", parsed);
+    const payload = {
+      status: "ok",
+      property: result.property,
+      memo: memoToPayload(result.memo, result.rootNamespace)
+    };
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(payload)
+        }
+      ]
+    };
+  });
+
+  server.registerTool("memory-list", {
+    title: "List memos",
+    description: "List memos within a namespace with optional version-aware ordering and pagination.",
+    inputSchema: memoryListInputSchema.shape
+  }, async (args: unknown) => {
+    const parsed = memoryListInputSchema.parse(args) as MemoryListInput;
+    const result = await bridge.invoke<MemoryListResponse>("memory.list", parsed);
+    const payload = {
+      status: "ok",
+      namespace: stripRootNamespace(result.namespace, result.rootNamespace),
+      count: result.count,
+      limit: result.limit,
+      orderBy: result.orderBy,
+      orderDirection: result.orderDirection,
+      cursor: result.cursor,
+      nextCursor: result.nextCursor,
+      items: result.items.map((item) => memoToPayload(item, result.rootNamespace))
     };
 
     return {

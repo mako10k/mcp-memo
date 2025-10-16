@@ -4,6 +4,9 @@ import { generateEmbedding } from "./openai";
 import {
   deleteInputSchema,
   listNamespacesInputSchema,
+  memoryPropertyInputSchema,
+  memoryPropertyDeleteInputSchema,
+  memoryListInputSchema,
   namespaceRenameInputSchema,
   relationDeleteInputSchema,
   relationGraphInputSchema,
@@ -24,6 +27,9 @@ import type { EnvVars } from "./env";
 import type {
   MemoryThinkSupportInput,
   MemoryThinkSupportOutput,
+  MemoryPropertyInput,
+  MemoryPropertyDeleteInput,
+  MemoryListInput,
   TweetInput,
   TweetReactionOutput,
   ToolInvocation
@@ -31,6 +37,8 @@ import type {
 import type {
   MemoryDeleteResponse,
   MemoryListNamespacesResponse,
+  MemoryPropertyResponse,
+  MemoryListResponse,
   MemorySaveResponse,
   MemorySearchResponse,
   MemoryNamespaceRenameResponse,
@@ -78,6 +86,47 @@ export async function handleInvocation(
     dependencies.embed ?? (async (input: string) => (await generateEmbedding(envVars, input)).vector);
   const thinkSupport = dependencies.thinkSupport ?? createThinkSupportRunner(envVars);
   const tweetReact = dependencies.tweetReact ?? createTweetReactor(envVars);
+
+  const mutateProperty = async (
+    parsed: MemoryPropertyInput | MemoryPropertyDeleteInput,
+    value: unknown
+  ): Promise<Response> => {
+    let resolved: NamespaceResolution;
+    try {
+      resolved = resolveNamespace(context, {
+        namespace: parsed.namespace,
+        defaultOverride: options.defaultNamespaceOverride
+      });
+    } catch (error) {
+      return jsonResponse(
+        { message: "Invalid namespace", detail: (error as Error).message },
+        400
+      );
+    }
+
+    const updated = await store.setMetadataProperty({
+      ownerId: context.ownerId,
+      namespace: resolved.namespace,
+      memoId: parsed.memoId,
+      name: parsed.name,
+      value
+    });
+
+    if (!updated) {
+      return jsonResponse({ message: "Memo not found" }, 404);
+    }
+
+    const propertyExists = Object.prototype.hasOwnProperty.call(updated.metadata, parsed.name);
+    const propertyValue = propertyExists ? updated.metadata[parsed.name] : null;
+
+    const payload: MemoryPropertyResponse = {
+      memo: updated,
+      property: { name: parsed.name, value: propertyValue },
+      rootNamespace: context.rootNamespace
+    };
+
+    return jsonResponse(payload, 200);
+  };
 
   switch (invocation.tool) {
     case "memory.save": {
@@ -216,6 +265,57 @@ export async function handleInvocation(
         depth: parsed.depth,
         count: namespaces.length,
         namespaces
+      };
+
+      return jsonResponse(payload, 200);
+    }
+    case "memory.property": {
+      const parsed = memoryPropertyInputSchema.parse(invocation.params ?? {}) as MemoryPropertyInput;
+      return mutateProperty(parsed, parsed.value);
+    }
+    case "memory.property.delete": {
+      const parsed = memoryPropertyDeleteInputSchema.parse(invocation.params ?? {}) as MemoryPropertyDeleteInput;
+      return mutateProperty(parsed, null);
+    }
+    case "memory.list": {
+      const parsed = memoryListInputSchema.parse(invocation.params ?? {}) as MemoryListInput;
+      let resolved: NamespaceResolution;
+      try {
+        resolved = resolveNamespace(context, {
+          namespace: parsed.namespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+      } catch (error) {
+        return jsonResponse(
+          { message: "Invalid namespace", detail: (error as Error).message },
+          400
+        );
+      }
+
+      const offset = parsed.cursor ? Number.parseInt(parsed.cursor, 10) : 0;
+      if (Number.isNaN(offset) || offset < 0) {
+        return jsonResponse({ message: "Invalid cursor" }, 400);
+      }
+
+      const result = await store.list({
+        ownerId: context.ownerId,
+        namespace: resolved.namespace,
+        limit: parsed.limit,
+        offset,
+        orderBy: parsed.orderBy,
+        orderDirection: parsed.orderDirection
+      });
+
+      const payload: MemoryListResponse = {
+        namespace: resolved.namespace,
+        rootNamespace: context.rootNamespace,
+        items: result.items,
+        count: result.items.length,
+        limit: parsed.limit,
+        orderBy: parsed.orderBy,
+        orderDirection: parsed.orderDirection,
+        cursor: parsed.cursor,
+        nextCursor: result.hasMore && result.nextOffset !== null ? String(result.nextOffset) : undefined
       };
 
       return jsonResponse(payload, 200);

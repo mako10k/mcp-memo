@@ -158,11 +158,36 @@ export interface NamespaceRenameResult {
   relationCount: number;
 }
 
+export interface MetadataPropertyParams {
+  ownerId: string;
+  namespace: string;
+  memoId: string;
+  name: string;
+  value: unknown;
+}
+
+export interface MemoryListParams {
+  ownerId: string;
+  namespace: string;
+  limit: number;
+  offset: number;
+  orderBy?: string;
+  orderDirection: "asc" | "desc";
+}
+
+export interface MemoryListResult {
+  items: MemoryEntry[];
+  hasMore: boolean;
+  nextOffset: number | null;
+}
+
 export interface MemoryStore {
   upsert(params: UpsertParams): Promise<MemoryEntry>;
   search(params: SearchParams): Promise<SearchResult[]>;
   delete(params: DeleteParams): Promise<MemoryEntry | null>;
   listNamespaces(params: ListNamespacesParams): Promise<string[]>;
+  setMetadataProperty(params: MetadataPropertyParams): Promise<MemoryEntry | null>;
+  list(params: MemoryListParams): Promise<MemoryListResult>;
   upsertRelation(params: RelationUpsertParams): Promise<RelationEntry>;
   deleteRelation(params: RelationDeleteParams): Promise<RelationEntry | null>;
   listRelations(params: RelationListParams): Promise<RelationListResult>;
@@ -434,6 +459,111 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
       }
 
       return Array.from(namespaces).sort();
+    },
+
+    async setMetadataProperty(params: MetadataPropertyParams): Promise<MemoryEntry | null> {
+      if (params.value === null) {
+        const deleteQuery = `
+          UPDATE memory_entries
+          SET metadata = (COALESCE(metadata, '{}'::jsonb) - $4),
+              updated_at = NOW(),
+              version = memory_entries.version + 1
+          WHERE owner_id = $1 AND namespace = $2 AND id = $3
+          RETURNING namespace, id, title, content, metadata, created_at, updated_at, version;
+        `;
+
+        const rows = (await sql(deleteQuery, [
+          params.ownerId,
+          params.namespace,
+          params.memoId,
+          params.name
+        ])) as MemoryRow[];
+
+        if (!rows.length) {
+          return null;
+        }
+
+        return mapRow(rows[0]);
+      }
+
+      const valueJson = params.value === undefined ? "null" : JSON.stringify(params.value);
+      const query = `
+        UPDATE memory_entries
+        SET metadata = jsonb_set(
+            COALESCE(metadata, '{}'::jsonb),
+            ARRAY[$4],
+            $5::jsonb,
+            true
+          ),
+          updated_at = NOW(),
+          version = memory_entries.version + 1
+        WHERE owner_id = $1 AND namespace = $2 AND id = $3
+        RETURNING namespace, id, title, content, metadata, created_at, updated_at, version;
+      `;
+
+      const rows = (await sql(query, [
+        params.ownerId,
+        params.namespace,
+        params.memoId,
+        params.name,
+        valueJson
+      ])) as MemoryRow[];
+
+      if (!rows.length) {
+        return null;
+      }
+
+      return mapRow(rows[0]);
+    },
+
+    async list(params: MemoryListParams): Promise<MemoryListResult> {
+      const limit = Math.max(1, Math.min(params.limit, 100));
+      const offset = Math.max(0, params.offset);
+      const fetchLimit = limit + 1;
+      const direction = params.orderDirection === "asc" ? "ASC" : "DESC";
+
+      const values: unknown[] = [params.ownerId, params.namespace];
+      let orderClause = `ORDER BY me.updated_at ${direction}, me.id ${direction}`;
+
+      if (params.orderBy) {
+        values.push(params.orderBy);
+        const orderIndex = values.length;
+        const versionExpression = `CASE
+            WHEN COALESCE(me.metadata->>$${orderIndex}, '') = '' THEN '0'
+            ELSE NULLIF(regexp_replace(me.metadata->>$${orderIndex}, '[^0-9\\.]', '', 'g'), '')
+          END`;
+        orderClause = `ORDER BY
+          string_to_array(
+            COALESCE(${versionExpression}, '0'),
+            '.'
+          )::int[] ${direction},
+          me.version ${direction},
+          me.id ${direction}`;
+      }
+
+      values.push(fetchLimit);
+      const limitIndex = values.length;
+      values.push(offset);
+      const offsetIndex = values.length;
+
+      const query = `
+        SELECT namespace, id, title, content, metadata, created_at, updated_at, version
+        FROM memory_entries me
+        WHERE owner_id = $1 AND namespace = $2
+        ${orderClause}
+        LIMIT $${limitIndex}
+        OFFSET $${offsetIndex};
+      `;
+
+      const rows = (await sql(query, values)) as MemoryRow[];
+      const hasMore = rows.length > limit;
+      const limitedRows = rows.slice(0, limit);
+
+      return {
+        items: limitedRows.map(mapRow),
+        hasMore,
+        nextOffset: hasMore ? offset + limit : null
+      } satisfies MemoryListResult;
     },
 
     async upsertRelation(params: RelationUpsertParams): Promise<RelationEntry> {

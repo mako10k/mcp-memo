@@ -6,6 +6,8 @@ import type { MemoryStore, RelationListResult, RelationGraphResult, SearchResult
 import type {
   MemoryEntry,
   MemoryListNamespacesResponse,
+  MemoryPropertyResponse,
+  MemoryListResponse,
   MemoryNamespaceRenameResponse,
   MemorySaveResponse,
   MemorySearchResponse,
@@ -96,6 +98,8 @@ function createStoreStub(overrides: Partial<MemoryStore> = {}): MemoryStore {
     search: overrides.search ?? (async () => defaultSearch),
     delete: overrides.delete ?? (async () => defaultMemo),
     listNamespaces: overrides.listNamespaces ?? (async () => defaultNamespaces),
+    setMetadataProperty: overrides.setMetadataProperty ?? (async () => defaultMemo),
+    list: overrides.list ?? (async () => ({ items: [defaultMemo], hasMore: false, nextOffset: null })),
     upsertRelation: overrides.upsertRelation ?? (async () => defaultRelation),
     deleteRelation: overrides.deleteRelation ?? (async () => defaultRelation),
     listRelations: overrides.listRelations ?? (async () => defaultRelationList),
@@ -306,6 +310,209 @@ describe("handleInvocation", () => {
     expect(json.namespaces[0]).toBe("legacy/DEF/projects");
     expect(json.namespaces[1]).toBe("legacy/DEF/projects/app");
     expect(json.namespaces[2]).toBe("legacy/DEF/projects/app/backend");
+  });
+
+  it("updates memo metadata property", async () => {
+    const response = await handleInvocation(
+      {
+        tool: "memory.property",
+        params: {
+          namespace: "default",
+          memoId: memoIdA,
+          name: "version",
+          value: "  1.2.3  "
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async setMetadataProperty(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
+            expect(params.namespace).toBe("legacy/DEF/default");
+            expect(params.memoId).toBe(memoIdA);
+            expect(params.name).toBe("version");
+            expect(params.value).toBe("  1.2.3  ");
+            const normalizedValue = typeof params.value === "string" ? params.value.trim() : params.value;
+            return {
+              memoId: params.memoId,
+              namespace: params.namespace,
+              content: "memo content",
+              metadata: { version: normalizedValue },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              version: 2
+            } satisfies MemoryEntry;
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as MemoryPropertyResponse;
+    expect(json.property.name).toBe("version");
+    expect(json.property.value).toBe("1.2.3");
+    expect(json.memo.metadata.version).toBe("1.2.3");
+    expect(json.property.value).toBe(json.memo.metadata.version);
+  });
+
+  it("deletes memo metadata property when value is null", async () => {
+    const response = await handleInvocation(
+      {
+        tool: "memory.property",
+        params: {
+          namespace: "default",
+          memoId: memoIdA,
+          name: "version",
+          value: null
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async setMetadataProperty(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
+            expect(params.namespace).toBe("legacy/DEF/default");
+            expect(params.memoId).toBe(memoIdA);
+            expect(params.name).toBe("version");
+            expect(params.value).toBe(null);
+            return {
+              memoId: params.memoId,
+              namespace: params.namespace,
+              content: "memo content",
+              metadata: {},
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              version: 3
+            } satisfies MemoryEntry;
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as MemoryPropertyResponse;
+    expect(json.property.name).toBe("version");
+    expect(json.property.value).toBe(null);
+    expect(json.memo.metadata.version).toBe(undefined);
+    expect(Object.prototype.hasOwnProperty.call(json.memo.metadata, "version")).toBe(false);
+  });
+
+  it("deletes memo metadata property via dedicated tool", async () => {
+    const response = await handleInvocation(
+      {
+        tool: "memory.property.delete",
+        params: {
+          namespace: "default",
+          memoId: memoIdA,
+          name: "tags"
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async setMetadataProperty(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
+            expect(params.namespace).toBe("legacy/DEF/default");
+            expect(params.memoId).toBe(memoIdA);
+            expect(params.name).toBe("tags");
+            expect(params.value).toBe(null);
+            return {
+              memoId: params.memoId,
+              namespace: params.namespace,
+              content: "memo content",
+              metadata: {},
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              version: 3
+            } satisfies MemoryEntry;
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as MemoryPropertyResponse;
+    expect(json.property.name).toBe("tags");
+    expect(json.property.value).toBe(null);
+    expect(Object.prototype.hasOwnProperty.call(json.memo.metadata, "tags")).toBe(false);
+  });
+
+  it("lists memos with version ordering and pagination", async () => {
+    const memoOne: MemoryEntry = {
+      memoId: memoIdA,
+      namespace: "legacy/DEF/default",
+      content: "memo 1",
+      metadata: { version: "1.0.0" },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: 1
+    };
+    const memoTwo: MemoryEntry = {
+      memoId: memoIdB,
+      namespace: "legacy/DEF/default",
+      content: "memo 2",
+      metadata: { version: "1.5.0" },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: 2
+    };
+    const memoThree: MemoryEntry = {
+      memoId: memoIdC,
+      namespace: "legacy/DEF/default",
+      content: "memo 3",
+      metadata: { version: "2.0.0" },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: 3
+    };
+
+    const response = await handleInvocation(
+      {
+        tool: "memory.list",
+        params: {
+          namespace: "default",
+          orderBy: "version",
+          orderDirection: "asc",
+          limit: 2,
+          cursor: "2"
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async list(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
+            expect(params.namespace).toBe("legacy/DEF/default");
+            expect(params.orderBy).toBe("version");
+            expect(params.orderDirection).toBe("asc");
+            expect(params.limit).toBe(2);
+            expect(params.offset).toBe(2);
+            return {
+              items: [memoThree],
+              hasMore: false,
+              nextOffset: null
+            } satisfies ReturnType<MemoryStore["list"]> extends Promise<infer R> ? R : never;
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as MemoryListResponse;
+    expect(json.items).toHaveLength(1);
+    expect(json.items[0].memoId).toBe(memoThree.memoId);
+    expect(json.count).toBe(json.items.length);
+    expect(json.orderBy).toBe("version");
+    expect(json.orderDirection).toBe("asc");
+  expect(json.nextCursor).toBe(undefined);
   });
 
   it("renames namespace for a specific memo", async () => {

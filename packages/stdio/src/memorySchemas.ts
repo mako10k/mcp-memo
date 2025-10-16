@@ -43,6 +43,27 @@ export interface MemoryListNamespacesResponse {
   namespaces: string[];
 }
 
+export interface MemoryPropertyResponse {
+  memo: MemoryEntry;
+  property: {
+    name: string;
+    value: unknown;
+  };
+  rootNamespace: string;
+}
+
+export interface MemoryListResponse {
+  namespace: string;
+  rootNamespace: string;
+  items: MemoryEntry[];
+  count: number;
+  limit: number;
+  orderBy?: string;
+  orderDirection: "asc" | "desc";
+  cursor?: string;
+  nextCursor?: string;
+}
+
 export interface MemoryNamespaceRenameResponse {
   previousNamespace: string;
   newNamespace: string;
@@ -136,7 +157,7 @@ export interface MemoryInferenceGuidanceResponse {
 }
 
 const primitiveValue = z.union([z.string(), z.number(), z.boolean(), z.null()]);
-const metadataValueSchema: z.ZodType<unknown> = z.lazy(() =>
+export const metadataValueSchema: z.ZodType<unknown> = z.lazy(() =>
   z.union([primitiveValue, z.array(metadataValueSchema), z.record(metadataValueSchema)])
 );
 
@@ -218,6 +239,27 @@ export const namespaceRenameInputSchema = z.object({
   fromNamespace: z.string().min(1),
   toNamespace: z.string().min(1),
   memoId: z.string().uuid().optional()
+});
+
+export const memoryPropertyInputSchema = z.object({
+  namespace: z.string().min(1).optional(),
+  memoId: z.string().uuid(),
+  name: z.string().min(1),
+  value: metadataValueSchema
+});
+
+export const memoryPropertyDeleteInputSchema = z.object({
+  namespace: z.string().min(1).optional(),
+  memoId: z.string().uuid(),
+  name: z.string().min(1)
+});
+
+export const memoryListInputSchema = z.object({
+  namespace: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  cursor: z.string().min(1).optional(),
+  orderBy: z.string().min(1).optional(),
+  orderDirection: z.enum(["asc", "desc"]).default("desc")
 });
 
 const thinkSupportPhaseSchema = z.enum(["divergence", "clustering", "convergence"]);
@@ -338,6 +380,9 @@ export const toolInvocationSchema = z.object({
     "memory.search",
     "memory.delete",
     "memory.list_namespaces",
+    "memory.property",
+  "memory.property.delete",
+    "memory.list",
     "memory.relation.save",
     "memory.relation.delete",
     "memory.relation.list",
@@ -368,6 +413,9 @@ export type MemoryThinkSupportDivergenceOutput = z.infer<typeof memoryThinkSuppo
 export type MemoryThinkSupportClusteringOutput = z.infer<typeof memoryThinkSupportClusteringOutputSchema>;
 export type MemoryThinkSupportConvergenceOutput = z.infer<typeof memoryThinkSupportConvergenceOutputSchema>;
 export type MemoryThinkSupportOutput = z.infer<typeof memoryThinkSupportOutputSchema>;
+export type MemoryPropertyInput = z.infer<typeof memoryPropertyInputSchema>;
+export type MemoryPropertyDeleteInput = z.infer<typeof memoryPropertyDeleteInputSchema>;
+export type MemoryListInput = z.infer<typeof memoryListInputSchema>;
 export type NamespaceRenameInput = z.infer<typeof namespaceRenameInputSchema>;
 export type TweetInput = z.infer<typeof tweetInputSchema>;
 export type TweetReactionOutput = z.infer<typeof tweetReactionOutputSchema>;

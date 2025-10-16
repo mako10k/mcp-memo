@@ -42,6 +42,27 @@ export interface MemoryListNamespacesResponse {
   namespaces: string[];
 }
 
+export interface MemoryPropertyResponse {
+  memo: MemoryEntry;
+  property: {
+    name: string;
+    value: unknown;
+  };
+  rootNamespace: string;
+}
+
+export interface MemoryListResponse {
+  namespace: string;
+  rootNamespace: string;
+  items: MemoryEntry[];
+  count: number;
+  limit: number;
+  orderBy?: string;
+  orderDirection: "asc" | "desc";
+  cursor?: string;
+  nextCursor?: string;
+}
+
 export interface MemoryNamespaceRenameResponse {
   previousNamespace: string;
   newNamespace: string;
