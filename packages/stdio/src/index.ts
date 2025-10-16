@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   deleteInputSchema,
   listNamespacesInputSchema,
+  namespaceRenameInputSchema,
   relationDeleteInputSchema,
   relationListInputSchema,
   relationSaveInputSchema,
@@ -19,6 +20,7 @@ import {
   type RelationGraphInput,
   type MemoryDeleteResponse,
   type MemoryListNamespacesResponse,
+  type MemoryNamespaceRenameResponse,
   type MemoryEntry,
   type MemorySaveResponse,
   type MemorySearchResponse,
@@ -38,6 +40,7 @@ import {
   type MemoryInferenceGuidanceResponse,
   type MemoryThinkSupportInput,
   type MemoryThinkSupportOutput,
+  type NamespaceRenameInput,
   type TweetInput,
   type TweetReactionOutput,
   thinkInputSchema,
@@ -257,6 +260,32 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
       depth: result.depth,
       count: result.count,
       namespaces: result.namespaces.map((ns) => stripRootNamespace(ns, result.rootNamespace))
+    };
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(payload)
+        }
+      ]
+    };
+  });
+
+  server.registerTool("memory-namespace-rename", {
+    title: "Rename namespace or memo",
+    description: "Rename a namespace entirely or move a single memo to a different namespace.",
+    inputSchema: namespaceRenameInputSchema.shape
+  }, async (args: unknown) => {
+    const parsed = namespaceRenameInputSchema.parse(args) as NamespaceRenameInput;
+    const result = await bridge.invoke<MemoryNamespaceRenameResponse>("memory.namespace.rename", parsed);
+    const payload = {
+      status: "ok",
+      previousNamespace: stripRootNamespace(result.previousNamespace, result.rootNamespace),
+      newNamespace: stripRootNamespace(result.newNamespace, result.rootNamespace),
+      updatedCount: result.updatedCount,
+      memoIds: result.memoIds,
+      relationCount: result.relationCount
     };
 
     return {

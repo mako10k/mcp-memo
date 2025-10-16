@@ -15,6 +15,11 @@ neonConfig.fetchConnectionCache = true;
 
 const VECTOR_DIMENSION = 1536;
 
+type SqlClient = ReturnType<typeof neon>;
+type TransactionCapableSql = SqlClient & {
+  begin?<Result>(callback: (tx: SqlClient) => Promise<Result>): Promise<Result>;
+};
+
 interface MemoryRow {
   namespace: string;
   id: string;
@@ -141,6 +146,18 @@ export interface SearchResult extends MemoryEntry {
   score: number | null;
 }
 
+export interface NamespaceRenameParams {
+  ownerId: string;
+  fromNamespace: string;
+  toNamespace: string;
+  memoId?: string;
+}
+
+export interface NamespaceRenameResult {
+  memoIds: string[];
+  relationCount: number;
+}
+
 export interface MemoryStore {
   upsert(params: UpsertParams): Promise<MemoryEntry>;
   search(params: SearchParams): Promise<SearchResult[]>;
@@ -150,6 +167,19 @@ export interface MemoryStore {
   deleteRelation(params: RelationDeleteParams): Promise<RelationEntry | null>;
   listRelations(params: RelationListParams): Promise<RelationListResult>;
   relationGraph(params: RelationGraphParams): Promise<RelationGraphResult>;
+  renameNamespace(params: NamespaceRenameParams): Promise<NamespaceRenameResult>;
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const withCode = error as { code?: string };
+  return withCode.code === "23505";
+}
+
+function createNamespaceConflictError(): Error {
+  const conflict = new Error("NAMESPACE_RENAME_CONFLICT");
+  conflict.name = "NAMESPACE_RENAME_CONFLICT";
+  return conflict;
 }
 
 function toVectorLiteral(vector: number[]): string {
@@ -259,11 +289,11 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
     },
 
     async search(params: SearchParams): Promise<SearchResult[]> {
-  const conditions: string[] = ["me.owner_id = $1", "me.namespace = $2"];
+      const conditions: string[] = ["me.owner_id = $1", "me.namespace = $2"];
       const values: unknown[] = [params.ownerId, params.namespace];
       let scoreClause = "NULL::double precision AS score";
-  let orderClause = "ORDER BY me.updated_at DESC";
-  let fromClause = "FROM memory_entries me";
+      let orderClause = "ORDER BY me.updated_at DESC";
+      let fromClause = "FROM memory_entries me";
       let withClause = "";
       let vectorParamIndex: number | null = null;
       let pivotParamIndex: number | null = null;
@@ -511,6 +541,85 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
       return { edges, nodes } satisfies RelationListResult;
     },
 
+    async renameNamespace(params: NamespaceRenameParams): Promise<NamespaceRenameResult> {
+      if (params.memoId) {
+        try {
+          const rows = (await sql(
+            `
+              UPDATE memory_entries
+              SET namespace = $4, updated_at = NOW(), version = memory_entries.version + 1
+              WHERE owner_id = $1 AND namespace = $2 AND id = $3
+              RETURNING id;
+            `,
+            [params.ownerId, params.fromNamespace, params.memoId, params.toNamespace]
+          )) as Array<{ id: string }>;
+
+          return {
+            memoIds: rows.map((row) => row.id),
+            relationCount: 0
+          } satisfies NamespaceRenameResult;
+        } catch (error) {
+          if (isUniqueViolation(error)) {
+            throw createNamespaceConflictError();
+          }
+          throw error;
+        }
+      }
+
+      if (params.fromNamespace === params.toNamespace) {
+        return {
+          memoIds: [],
+          relationCount: 0
+        } satisfies NamespaceRenameResult;
+      }
+
+      try {
+        const transactionCapable = sql as TransactionCapableSql;
+        if (typeof transactionCapable.begin !== "function") {
+          throw new Error("TRANSACTIONS_UNSUPPORTED");
+        }
+
+        return await transactionCapable.begin(async (tx: SqlClient) => {
+          const memoRows = (await tx(
+            `
+              UPDATE memory_entries
+              SET namespace = $3, updated_at = NOW(), version = memory_entries.version + 1
+              WHERE owner_id = $1 AND namespace = $2
+              RETURNING id;
+            `,
+            [params.ownerId, params.fromNamespace, params.toNamespace]
+          )) as Array<{ id: string }>;
+
+          if (!memoRows.length) {
+            return {
+              memoIds: [],
+              relationCount: 0
+            } satisfies NamespaceRenameResult;
+          }
+
+          const relationRows = (await tx(
+            `
+              UPDATE memory_relations
+              SET namespace = $3, updated_at = NOW(), version = memory_relations.version + 1
+              WHERE owner_id = $1 AND namespace = $2
+              RETURNING source_memo_id;
+            `,
+            [params.ownerId, params.fromNamespace, params.toNamespace]
+          )) as Array<{ source_memo_id: string }>;
+
+          return {
+            memoIds: memoRows.map((row) => row.id),
+            relationCount: relationRows.length
+          } satisfies NamespaceRenameResult;
+        });
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          throw createNamespaceConflictError();
+        }
+        throw error;
+      }
+    },
+
     async relationGraph(params: RelationGraphParams): Promise<RelationGraphResult> {
       const includeForward = params.direction === "forward" || params.direction === "both";
       const includeBackward = params.direction === "backward" || params.direction === "both";
@@ -612,7 +721,7 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
 )`);
       }
 
-  const withClause = cteDefinitions.length ? `WITH RECURSIVE ${cteDefinitions.join(",\n")}` : "";
+    const withClause = cteDefinitions.length ? `WITH RECURSIVE ${cteDefinitions.join(",\n")}` : "";
 
       const traversalSelects: string[] = [];
       if (includeForward) {

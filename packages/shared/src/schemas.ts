@@ -79,6 +79,12 @@ export const inferenceGuidanceInputSchema = z.object({
   language: z.enum(["en", "ja"]).optional()
 });
 
+export const namespaceRenameInputSchema = z.object({
+  fromNamespace: z.string().min(1),
+  toNamespace: z.string().min(1),
+  memoId: z.string().uuid().optional()
+});
+
 const thinkSupportPhaseSchema = z.enum(["divergence", "clustering", "convergence"]);
 
 const thinkSupportIdeaInputSchema = z.object({
@@ -402,6 +408,7 @@ export const toolInvocationSchema = z.object({
     "memory.relation.list",
     "memory.relation.graph",
     "memory.inference.guidance",
+    "memory.namespace.rename",
     "memory.think.support",
     "tweet",
     "think"
@@ -426,6 +433,7 @@ export type MemoryThinkSupportDivergenceOutput = z.infer<typeof memoryThinkSuppo
 export type MemoryThinkSupportClusteringOutput = z.infer<typeof memoryThinkSupportClusteringOutputSchema>;
 export type MemoryThinkSupportConvergenceOutput = z.infer<typeof memoryThinkSupportConvergenceOutputSchema>;
 export type MemoryThinkSupportOutput = z.infer<typeof memoryThinkSupportOutputSchema>;
+export type NamespaceRenameInput = z.infer<typeof namespaceRenameInputSchema>;
 export type TweetInput = z.infer<typeof tweetInputSchema>;
 export type TweetReactionOutput = z.infer<typeof tweetReactionOutputSchema>;
 export type MemoryThinkSupportDivergenceOutputJsonSchema = typeof memoryThinkSupportDivergenceOutputJsonSchema;

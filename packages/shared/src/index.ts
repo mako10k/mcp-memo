@@ -42,6 +42,15 @@ export interface MemoryListNamespacesResponse {
   namespaces: string[];
 }
 
+export interface MemoryNamespaceRenameResponse {
+  previousNamespace: string;
+  newNamespace: string;
+  updatedCount: number;
+  memoIds: string[];
+  relationCount: number;
+  rootNamespace: string;
+}
+
 export interface RelationEntry {
   namespace: string;
   sourceMemoId: string;

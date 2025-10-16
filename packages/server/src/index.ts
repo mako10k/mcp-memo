@@ -4,6 +4,7 @@ import { generateEmbedding } from "./openai";
 import {
   deleteInputSchema,
   listNamespacesInputSchema,
+  namespaceRenameInputSchema,
   relationDeleteInputSchema,
   relationGraphInputSchema,
   relationListInputSchema,
@@ -32,6 +33,7 @@ import type {
   MemoryListNamespacesResponse,
   MemorySaveResponse,
   MemorySearchResponse,
+  MemoryNamespaceRenameResponse,
   RelationDeleteResponse,
   RelationListResponse,
   RelationSaveResponse,
@@ -105,7 +107,7 @@ export async function handleInvocation(
         embedding: embeddingVector
       });
 
-  const payload: MemorySaveResponse = { memo, rootNamespace: context.rootNamespace };
+    const payload: MemorySaveResponse = { memo, rootNamespace: context.rootNamespace };
       return jsonResponse(payload, 200);
     }
     case "memory.search": {
@@ -178,11 +180,11 @@ export async function handleInvocation(
           400
         );
       }
-  const deleted = await store.delete({ ownerId: context.ownerId, namespace: resolved.namespace, memoId: parsed.memoId });
+      const deleted = await store.delete({ ownerId: context.ownerId, namespace: resolved.namespace, memoId: parsed.memoId });
       if (!deleted) {
         return jsonResponse({ message: "Memo not found" }, 404);
       }
-  const payload: MemoryDeleteResponse = { deleted: true, memo: deleted, rootNamespace: context.rootNamespace };
+      const payload: MemoryDeleteResponse = { deleted: true, memo: deleted, rootNamespace: context.rootNamespace };
       return jsonResponse(payload, 200);
     }
     case "memory.list_namespaces": {
@@ -217,6 +219,58 @@ export async function handleInvocation(
       };
 
       return jsonResponse(payload, 200);
+    }
+    case "memory.namespace.rename": {
+      const parsed = namespaceRenameInputSchema.parse(invocation.params ?? {});
+      let fromResolved: NamespaceResolution;
+      let toResolved: NamespaceResolution;
+      try {
+        fromResolved = resolveNamespace(context, {
+          namespace: parsed.fromNamespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+        toResolved = resolveNamespace(context, {
+          namespace: parsed.toNamespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+      } catch (error) {
+        return jsonResponse(
+          { message: "Invalid namespace", detail: (error as Error).message },
+          400
+        );
+      }
+
+      try {
+        const result = await store.renameNamespace({
+          ownerId: context.ownerId,
+          fromNamespace: fromResolved.namespace,
+          toNamespace: toResolved.namespace,
+          memoId: parsed.memoId
+        });
+
+        if (parsed.memoId && result.memoIds.length === 0) {
+          return jsonResponse({ message: "Memo not found" }, 404);
+        }
+
+        const payload: MemoryNamespaceRenameResponse = {
+          previousNamespace: fromResolved.namespace,
+          newNamespace: toResolved.namespace,
+          updatedCount: result.memoIds.length,
+          memoIds: result.memoIds,
+          relationCount: result.relationCount,
+          rootNamespace: context.rootNamespace
+        };
+
+        return jsonResponse(payload, 200);
+      } catch (error) {
+        if ((error as Error).message === "NAMESPACE_RENAME_CONFLICT") {
+          return jsonResponse({ message: "Namespace rename conflict" }, 409);
+        }
+        if ((error as Error).message === "TRANSACTIONS_UNSUPPORTED") {
+          return jsonResponse({ message: "Namespace rename unavailable" }, 500);
+        }
+        throw error;
+      }
     }
     case "memory.relation.save": {
       const parsed = relationSaveInputSchema.parse(invocation.params ?? {});

@@ -6,6 +6,7 @@ import type { MemoryStore, RelationListResult, RelationGraphResult, SearchResult
 import type {
   MemoryEntry,
   MemoryListNamespacesResponse,
+  MemoryNamespaceRenameResponse,
   MemorySaveResponse,
   MemorySearchResponse,
   RelationListResponse,
@@ -98,7 +99,8 @@ function createStoreStub(overrides: Partial<MemoryStore> = {}): MemoryStore {
     upsertRelation: overrides.upsertRelation ?? (async () => defaultRelation),
     deleteRelation: overrides.deleteRelation ?? (async () => defaultRelation),
     listRelations: overrides.listRelations ?? (async () => defaultRelationList),
-    relationGraph: overrides.relationGraph ?? (async () => defaultRelationGraph)
+    relationGraph: overrides.relationGraph ?? (async () => defaultRelationGraph),
+    renameNamespace: overrides.renameNamespace ?? (async () => ({ memoIds: [], relationCount: 0 }))
   } satisfies MemoryStore;
 }
 
@@ -304,6 +306,104 @@ describe("handleInvocation", () => {
     expect(json.namespaces[0]).toBe("legacy/DEF/projects");
     expect(json.namespaces[1]).toBe("legacy/DEF/projects/app");
     expect(json.namespaces[2]).toBe("legacy/DEF/projects/app/backend");
+  });
+
+  it("renames namespace for a specific memo", async () => {
+    const response = await handleInvocation(
+      {
+        tool: "memory.namespace.rename",
+        params: {
+          fromNamespace: "default",
+          toNamespace: "projects/reports",
+          memoId: memoIdA
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async renameNamespace(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
+            expect(params.fromNamespace).toBe("legacy/DEF/default");
+            expect(params.toNamespace).toBe("legacy/DEF/projects/reports");
+            expect(params.memoId).toBe(memoIdA);
+            return {
+              memoIds: [memoIdA],
+              relationCount: 0
+            };
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as MemoryNamespaceRenameResponse;
+    expect(json.previousNamespace).toBe("legacy/DEF/default");
+    expect(json.newNamespace).toBe("legacy/DEF/projects/reports");
+  expect(json.updatedCount).toBe(1);
+  expect(json.memoIds.length).toBe(1);
+  expect(json.memoIds[0]).toBe(memoIdA);
+    expect(json.relationCount).toBe(0);
+  });
+
+  it("returns 404 when renaming missing memo", async () => {
+    const response = await handleInvocation(
+      {
+        tool: "memory.namespace.rename",
+        params: {
+          fromNamespace: "default",
+          toNamespace: "archive",
+          memoId: missingMemoId
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async renameNamespace(params) {
+            expect(params.memoId).toBe(missingMemoId);
+            expect(params.fromNamespace).toBe("legacy/DEF/default");
+            expect(params.toNamespace).toBe("legacy/DEF/archive");
+            return {
+              memoIds: [],
+              relationCount: 0
+            };
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(404);
+    const json = (await response.json()) as { message: string };
+    expect(json.message).toBe("Memo not found");
+  });
+
+  it("returns 409 when rename conflicts", async () => {
+    const response = await handleInvocation(
+      {
+        tool: "memory.namespace.rename",
+        params: {
+          fromNamespace: "default",
+          toNamespace: "archive"
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        embed: async () => makeVector(0.01),
+        store: createStoreStub({
+          async renameNamespace() {
+            throw new Error("NAMESPACE_RENAME_CONFLICT");
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(409);
+    const json = (await response.json()) as { message: string };
+    expect(json.message).toBe("Namespace rename conflict");
   });
 
   it("rejects namespace escaping root", async () => {
