@@ -59,7 +59,7 @@ import { MemoryHttpBridge } from "./httpBridge";
 
 const serverInfo = {
   name: "memory-mcp",
-  version: "0.4.0"
+  version: "0.5.1"
 };
 
 type CliArgKey =

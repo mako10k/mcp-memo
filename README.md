@@ -2,11 +2,15 @@
 
 Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索）MCP サーバです。Neon (serverless PostgreSQL + pgvector) をデータストアに採用し、OpenAI Embeddings API で埋め込みベクトルを生成します。
 
+> 公開中の STDIO アダプタ／Workers エンドポイント（`https://mcp-memory-server.mako10k.workers.dev`）を利用する際は、`mako10k@mk10.org` まで Bearer トークン発行をご依頼ください。**有償**のため、面識のある方・テスト協力いただける方・寄付をいただいた方に限定してご案内しています。
+
 ## 機能
 - `memory-save`：メモの新規作成 / 更新（埋め込み自動生成、メタデータマージ、バージョン増分）。
 - `memory-search`：ベクトル類似度検索＋メタデータフィルタ。メモ ID を pivot にしたコサイン類似度検索や `distanceMetric`（`cosine` / `l2`）の切り替えに対応。
 - `memory-delete`：名前空間 + memo ID で削除。
 - `memory-list-namespaces`：ルート/デフォルトを基点にサブ名前空間を列挙。
+- `memory-list`：メモ一覧をページングしつつ、メタデータの semver 風ソートや更新日時順で取得。
+- `memory-property` / `memory-property-delete`：メタデータのプロパティ追加・更新・削除を行い、結果のメモを取得。
 - `memory-relation-save`：2 つのメモ間にタグ付きリレーションを保存し、重み・理由を記録。
 - `memory-relation-delete` / `memory-relation-list`：リレーションの削除・列挙（グラフ構造出力）。
 - `memory-relation-graph`：起点メモからリレーションを深さ制限付きでトラバース（順方向 / 逆方向 / 双方向を選択可能、路径は JSON 配列で返却）。
@@ -53,7 +57,7 @@ Cloudflare Workers で動作するシンプルなメモリ（ベクトル検索�
     --memory-http-url https://<your-worker>.workers.dev \
     --memory-http-timeout-ms 15000
   ```
-  TLS の独自証明書を利用する場合は `NODE_EXTRA_CA_CERTS` / `BUN_CERT` に `certs/cloudflare-chain.pem` を指定してください。
+  TLS の独自証明書を利用する場合は `NODE_EXTRA_CA_CERTS`（必要に応じて `BUN_CERT`）に `certs/cloudflare-chain.pem` を指定してください。証明書チェーンはリポジトリおよび npm パッケージ（`@mako10k/mcp-memo/certs/cloudflare-chain.pem`）に同梱しています。
 
 ### API キーの発行
 

@@ -1,6 +1,6 @@
 # MCP クライアント別設定ガイド
 
-`@mako10k/mcp-memo` を Claude Desktop / Cline / VS Code などで利用する手順をまとめます。すべての例で、必要に応じて `NODE_EXTRA_CA_CERTS` など環境変数を設定してください。
+`@mako10k/mcp-memo` を Claude Desktop / Cline / VS Code などで利用する手順をまとめます。すべての例で、必要に応じて `MEMORY_HTTP_URL` / `MEMORY_HTTP_BEARER_TOKEN` / `NODE_EXTRA_CA_CERTS` を設定してください（公開ワーカー用証明書はパッケージ同梱の `certs/cloudflare-chain.pem` を利用できます）。
 
 ## Claude Desktop
 
@@ -18,6 +18,7 @@
        "https://<your-worker>.workers.dev"
      ],
      "env": {
+       "MEMORY_HTTP_BEARER_TOKEN": "<your-token>",
        "NODE_EXTRA_CA_CERTS": "/absolute/path/to/certs/cloudflare-chain.pem"
      }
    }
@@ -29,9 +30,9 @@
 
 1. Cline の設定画面で MCP サーバを追加。
 2. 「コマンド」欄に `npm exec @mako10k/mcp-memo`、引数欄に `--memory-http-url https://<your-worker>.workers.dev` を入力。
-3. ルートからのデフォルト名前空間を切り替えたい場合は `MEMORY_NAMESPACE_DEFAULT` を設定してください。
-4. 名前空間の構造を把握したいときは `memory-list-namespaces` ツールを呼び出せます。
-3. 追加ヘッダーを使う場合は `MEMORY_HTTP_HEADERS` に JSON 文字列を渡します。
+3. ルートからのデフォルト名前空間を切り替えたい場合は `MEMORY_NAMESPACE_DEFAULT` を追加で設定してください。
+4. 名前空間の構造を把握したいときは `memory-list-namespaces` や `memory-list` を呼び出せます。
+5. 追加ヘッダーを使う場合は `MEMORY_HTTP_HEADERS` に JSON 文字列を渡します。
 
 ## VS Code (MCP 拡張)
 
@@ -49,8 +50,9 @@
       ],
       "env": {
         "MEMORY_HTTP_URL": "https://<your-worker>.workers.dev",
-          "NODE_EXTRA_CA_CERTS": "${workspaceFolder}/certs/cloudflare-chain.pem",
-          "MEMORY_NAMESPACE_DEFAULT": "projectA/DEF"
+        "MEMORY_HTTP_BEARER_TOKEN": "${input:memory_api_token}",
+        "NODE_EXTRA_CA_CERTS": "${workspaceFolder}/certs/cloudflare-chain.pem",
+        "MEMORY_NAMESPACE_DEFAULT": "projectA/DEF"
       }
     }
   }

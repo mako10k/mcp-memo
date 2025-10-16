@@ -2,6 +2,8 @@
 
 `@mako10k/mcp-memo` は、Cloudflare Workers 上で稼働する `mcp-memory-server` を STDIO 経由で呼び出せる CLI アダプタです。`npm exec` / `npx` / `bunx` などから直接起動でき、Claude Desktop・Cline・VS Code など主要な MCP クライアントに簡単に組み込めます。
 
+> Hosted エンドポイント（`https://mcp-memory-server.mako10k.workers.dev`）を利用したい場合は、`mako10k@mk10.org` までトークン発行をご依頼ください。**有償**のため、面識のある方・テスト協力いただける方・寄付をいただいた方に限ってご案内しています。
+
 ## インストール不要で実行する
 
 ```bash
@@ -29,10 +31,13 @@ memory-mcp
 | `MEMORY_HTTP_TIMEOUT_MS` | HTTP タイムアウト (ms) | なし |
 | `MEMORY_NAMESPACE_DEFAULT` | 相対パス解決に使うデフォルト名前空間。API キーが持つ推奨値を上書きできます。 | なし |
 
+Node.js で自己署名 / 独自 CA 証明書を追加したい場合は `NODE_EXTRA_CA_CERTS` を利用してください。公開ワーカー `https://mcp-memory-server.mako10k.workers.dev` では、リポジトリと npm パッケージに含まれる `certs/cloudflare-chain.pem` を指定すると接続できます。
+
 ## 提供ツール
 
 - `memory-save` / `memory-search` / `memory-delete`
-- `memory-list-namespaces`
+- `memory-list-namespaces` / `memory-list`
+- `memory-property` / `memory-property-delete`
 - `memory-relation-save` / `memory-relation-delete` / `memory-relation-list` / `memory-relation-graph`
 - `memory-inference-guidance`（フェーズ 0〜4 のワークフロー概要を返すガイダンスレスポンス。常に英語で返却）
 - `think` (accepts arbitrary parameters and returns no response so you can insert a reflection pause)
@@ -53,11 +58,17 @@ memory-mcp
     ],
     "env": {
       "MEMORY_HTTP_URL": "https://<your-worker>.workers.dev",
+      "MEMORY_HTTP_BEARER_TOKEN": "${input:memory_api_token}",
       "NODE_EXTRA_CA_CERTS": "${workspaceFolder}/certs/cloudflare-chain.pem"
     }
   }
 }
 ```
+
+## 証明書チェーンの配布
+
+- リポジトリ直下の `certs/cloudflare-chain.pem` および npm に公開される `@mako10k/mcp-memo` パッケージ (`node_modules/@mako10k/mcp-memo/certs/cloudflare-chain.pem`) に Cloudflare 側チェーン証明書を同梱しています。
+- VS Code などの MCP クライアントでは、`NODE_EXTRA_CA_CERTS` に上記ファイルへのパスを設定するとホスト済みエンドポイントへ接続できます。
 
 ## ローカル開発
 
