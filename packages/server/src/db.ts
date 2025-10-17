@@ -60,6 +60,13 @@ interface RelationGraphRow extends RelationRow {
   path_json: unknown;
 }
 
+interface MetadataMutationRow extends MemoryRow {
+  previous_value: unknown;
+  current_value: unknown;
+  previous_exists: boolean | null;
+  current_exists: boolean | null;
+}
+
 export interface UpsertParams {
   ownerId: string;
   namespace: string;
@@ -158,12 +165,35 @@ export interface NamespaceRenameResult {
   relationCount: number;
 }
 
+/**
+ * プロパティCRUD API型定義
+ * - create: MetadataPropertyParams（新規作成）
+ * - update: MetadataPropertyParams（値更新）
+ * - delete: MetadataPropertyParams（value=nullで削除、または専用delete API）
+ * - list: MemoryListParams（namespace, memoId単位で一覧取得）
+ *
+ * ライフサイクルイベント（created, updated, deleted）通知は今後追加予定。
+ */
 export interface MetadataPropertyParams {
   ownerId: string;
   namespace: string;
   memoId: string;
   name: string;
   value: unknown;
+}
+
+export interface MetadataPropertyListParams {
+  ownerId: string;
+  namespace: string;
+  memoId: string;
+}
+
+export interface MetadataPropertyMutationResult {
+  memo: MemoryEntry | null;
+  previousValue: unknown;
+  currentValue: unknown;
+  previousExists: boolean;
+  currentExists: boolean;
 }
 
 export interface MemoryListParams {
@@ -186,7 +216,8 @@ export interface MemoryStore {
   search(params: SearchParams): Promise<SearchResult[]>;
   delete(params: DeleteParams): Promise<MemoryEntry | null>;
   listNamespaces(params: ListNamespacesParams): Promise<string[]>;
-  setMetadataProperty(params: MetadataPropertyParams): Promise<MemoryEntry | null>;
+  setMetadataProperty(params: MetadataPropertyParams): Promise<MetadataPropertyMutationResult>;
+  getMetadataProperties(params: MetadataPropertyListParams): Promise<MemoryEntry | null>;
   list(params: MemoryListParams): Promise<MemoryListResult>;
   upsertRelation(params: RelationUpsertParams): Promise<RelationEntry>;
   deleteRelation(params: RelationDeleteParams): Promise<RelationEntry | null>;
@@ -461,52 +492,119 @@ export function createMemoryStore(env: EnvVars): MemoryStore {
       return Array.from(namespaces).sort();
     },
 
-    async setMetadataProperty(params: MetadataPropertyParams): Promise<MemoryEntry | null> {
-      if (params.value === null) {
-        const deleteQuery = `
-          UPDATE memory_entries
-          SET metadata = (COALESCE(metadata, '{}'::jsonb) - $4),
+    async setMetadataProperty(params: MetadataPropertyParams): Promise<MetadataPropertyMutationResult> {
+  const commonParams = [params.ownerId, params.namespace, params.memoId, params.name];
+
+      const mutationQuery = params.value === null
+        ? `
+          WITH existing AS (
+            SELECT
+              COALESCE(metadata, '{}'::jsonb) ? $4 AS previous_exists,
+              metadata -> $4 AS previous_value
+            FROM memory_entries
+            WHERE owner_id = $1 AND namespace = $2 AND id = $3
+          ),
+          updated AS (
+            UPDATE memory_entries
+            SET metadata = (COALESCE(metadata, '{}'::jsonb) - $4),
+                updated_at = NOW(),
+                version = memory_entries.version + 1
+            WHERE owner_id = $1 AND namespace = $2 AND id = $3
+            RETURNING namespace, id, title, content, metadata, created_at, updated_at, version
+          )
+          SELECT
+            updated.namespace,
+            updated.id,
+            updated.title,
+            updated.content,
+            updated.metadata,
+            updated.created_at,
+            updated.updated_at,
+            updated.version,
+            COALESCE(existing.previous_exists, false) AS previous_exists,
+            existing.previous_value,
+            COALESCE(updated.metadata ? $4, false) AS current_exists,
+            updated.metadata -> $4 AS current_value
+          FROM updated
+          LEFT JOIN existing ON true;
+        `
+        : `
+          WITH existing AS (
+            SELECT
+              COALESCE(metadata, '{}'::jsonb) ? $4 AS previous_exists,
+              metadata -> $4 AS previous_value
+            FROM memory_entries
+            WHERE owner_id = $1 AND namespace = $2 AND id = $3
+          ),
+          updated AS (
+            UPDATE memory_entries
+            SET metadata = jsonb_set(
+                COALESCE(metadata, '{}'::jsonb),
+                ARRAY[$4],
+                $5::jsonb,
+                true
+              ),
               updated_at = NOW(),
               version = memory_entries.version + 1
-          WHERE owner_id = $1 AND namespace = $2 AND id = $3
-          RETURNING namespace, id, title, content, metadata, created_at, updated_at, version;
+            WHERE owner_id = $1 AND namespace = $2 AND id = $3
+            RETURNING namespace, id, title, content, metadata, created_at, updated_at, version
+          )
+          SELECT
+            updated.namespace,
+            updated.id,
+            updated.title,
+            updated.content,
+            updated.metadata,
+            updated.created_at,
+            updated.updated_at,
+            updated.version,
+            COALESCE(existing.previous_exists, false) AS previous_exists,
+            existing.previous_value,
+            COALESCE(updated.metadata ? $4, false) AS current_exists,
+            updated.metadata -> $4 AS current_value
+          FROM updated
+          LEFT JOIN existing ON true;
         `;
 
-        const rows = (await sql(deleteQuery, [
-          params.ownerId,
-          params.namespace,
-          params.memoId,
-          params.name
-        ])) as MemoryRow[];
+      const serializedValue = params.value === undefined ? "null" : JSON.stringify(params.value);
+      const parameters: unknown[] = params.value === null
+        ? [...commonParams]
+        : [...commonParams, serializedValue];
 
-        if (!rows.length) {
-          return null;
-        }
+      const rows = (await sql(mutationQuery, parameters)) as MetadataMutationRow[];
 
-        return mapRow(rows[0]);
+      if (!rows.length) {
+        return {
+          memo: null,
+          previousValue: undefined,
+          currentValue: undefined,
+          previousExists: false,
+          currentExists: false
+        } satisfies MetadataPropertyMutationResult;
       }
 
-      const valueJson = params.value === undefined ? "null" : JSON.stringify(params.value);
+      const row = rows[0];
+      return {
+        memo: mapRow(row),
+        previousValue: row.previous_value ?? undefined,
+        currentValue: row.current_value ?? undefined,
+        previousExists: Boolean(row.previous_exists),
+        currentExists: Boolean(row.current_exists)
+      } satisfies MetadataPropertyMutationResult;
+    },
+
+    async getMetadataProperties(params: MetadataPropertyListParams): Promise<MemoryEntry | null> {
       const query = `
-        UPDATE memory_entries
-        SET metadata = jsonb_set(
-            COALESCE(metadata, '{}'::jsonb),
-            ARRAY[$4],
-            $5::jsonb,
-            true
-          ),
-          updated_at = NOW(),
-          version = memory_entries.version + 1
+        SELECT namespace, id, title, content, metadata, created_at, updated_at, version
+        FROM memory_entries
         WHERE owner_id = $1 AND namespace = $2 AND id = $3
-        RETURNING namespace, id, title, content, metadata, created_at, updated_at, version;
+        LIMIT 1;
       `;
 
       const rows = (await sql(query, [
         params.ownerId,
         params.namespace,
-        params.memoId,
-        params.name,
-        valueJson
+        params.memoId
       ])) as MemoryRow[];
 
       if (!rows.length) {

@@ -2,11 +2,18 @@ import { describe, expect, it } from "bun:test";
 
 import { handleInvocation, type RequestContext } from "./index";
 import type { EnvVars } from "./env";
-import type { MemoryStore, RelationListResult, RelationGraphResult, SearchResult } from "./db";
+import type {
+  MemoryStore,
+  RelationListResult,
+  RelationGraphResult,
+  SearchResult,
+  MetadataPropertyMutationResult
+} from "./db";
 import type {
   MemoryEntry,
   MemoryListNamespacesResponse,
   MemoryPropertyResponse,
+  MemoryPropertyListResponse,
   MemoryListResponse,
   MemoryNamespaceRenameResponse,
   MemorySaveResponse,
@@ -93,12 +100,21 @@ function createStoreStub(overrides: Partial<MemoryStore> = {}): MemoryStore {
     nodes: []
   };
 
+  const defaultPropertyMutation: MetadataPropertyMutationResult = {
+    memo: defaultMemo,
+    previousValue: undefined,
+    currentValue: undefined,
+    previousExists: false,
+    currentExists: false
+  };
+
   return {
     upsert: overrides.upsert ?? (async () => defaultMemo),
     search: overrides.search ?? (async () => defaultSearch),
     delete: overrides.delete ?? (async () => defaultMemo),
     listNamespaces: overrides.listNamespaces ?? (async () => defaultNamespaces),
-    setMetadataProperty: overrides.setMetadataProperty ?? (async () => defaultMemo),
+    setMetadataProperty: overrides.setMetadataProperty ?? (async () => defaultPropertyMutation),
+    getMetadataProperties: overrides.getMetadataProperties ?? (async () => defaultMemo),
     list: overrides.list ?? (async () => ({ items: [defaultMemo], hasMore: false, nextOffset: null })),
     upsertRelation: overrides.upsertRelation ?? (async () => defaultRelation),
     deleteRelation: overrides.deleteRelation ?? (async () => defaultRelation),
@@ -335,7 +351,7 @@ describe("handleInvocation", () => {
             expect(params.name).toBe("version");
             expect(params.value).toBe("  1.2.3  ");
             const normalizedValue = typeof params.value === "string" ? params.value.trim() : params.value;
-            return {
+            const memo: MemoryEntry = {
               memoId: params.memoId,
               namespace: params.namespace,
               content: "memo content",
@@ -343,7 +359,14 @@ describe("handleInvocation", () => {
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               version: 2
-            } satisfies MemoryEntry;
+            };
+            return {
+              memo,
+              previousValue: undefined,
+              currentValue: normalizedValue,
+              previousExists: false,
+              currentExists: true
+            } satisfies MetadataPropertyMutationResult;
           }
         })
       }
@@ -352,9 +375,11 @@ describe("handleInvocation", () => {
     expect(response.status).toBe(200);
     const json = (await response.json()) as MemoryPropertyResponse;
     expect(json.property.name).toBe("version");
-    expect(json.property.value).toBe("1.2.3");
-    expect(json.memo.metadata.version).toBe("1.2.3");
-    expect(json.property.value).toBe(json.memo.metadata.version);
+  expect(json.property.value).toBe("1.2.3");
+  expect(json.property.previousValue).toBe(null);
+  expect(json.property.action).toBe("created");
+  expect(json.property.changed).toBe(true);
+  expect(json.memo.metadata.version).toBe("1.2.3");
   });
 
   it("deletes memo metadata property when value is null", async () => {
@@ -379,7 +404,7 @@ describe("handleInvocation", () => {
             expect(params.memoId).toBe(memoIdA);
             expect(params.name).toBe("version");
             expect(params.value).toBe(null);
-            return {
+            const memo: MemoryEntry = {
               memoId: params.memoId,
               namespace: params.namespace,
               content: "memo content",
@@ -387,7 +412,14 @@ describe("handleInvocation", () => {
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
               version: 3
-            } satisfies MemoryEntry;
+            };
+            return {
+              memo,
+              previousValue: "1.2.3",
+              currentValue: undefined,
+              previousExists: true,
+              currentExists: false
+            } satisfies MetadataPropertyMutationResult;
           }
         })
       }
@@ -397,6 +429,9 @@ describe("handleInvocation", () => {
     const json = (await response.json()) as MemoryPropertyResponse;
     expect(json.property.name).toBe("version");
     expect(json.property.value).toBe(null);
+    expect(json.property.previousValue).toBe("1.2.3");
+    expect(json.property.action).toBe("deleted");
+    expect(json.property.changed).toBe(true);
     expect(json.memo.metadata.version).toBe(undefined);
     expect(Object.prototype.hasOwnProperty.call(json.memo.metadata, "version")).toBe(false);
   });
@@ -422,15 +457,22 @@ describe("handleInvocation", () => {
             expect(params.memoId).toBe(memoIdA);
             expect(params.name).toBe("tags");
             expect(params.value).toBe(null);
-            return {
+            const memo: MemoryEntry = {
               memoId: params.memoId,
               namespace: params.namespace,
               content: "memo content",
               metadata: {},
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString(),
-              version: 3
-            } satisfies MemoryEntry;
+              version: 4
+            };
+            return {
+              memo,
+              previousValue: "brainstorm",
+              currentValue: undefined,
+              previousExists: true,
+              currentExists: false
+            } satisfies MetadataPropertyMutationResult;
           }
         })
       }
@@ -440,7 +482,52 @@ describe("handleInvocation", () => {
     const json = (await response.json()) as MemoryPropertyResponse;
     expect(json.property.name).toBe("tags");
     expect(json.property.value).toBe(null);
+    expect(json.property.previousValue).toBe("brainstorm");
+    expect(json.property.action).toBe("deleted");
+    expect(json.property.changed).toBe(true);
     expect(Object.prototype.hasOwnProperty.call(json.memo.metadata, "tags")).toBe(false);
+  });
+
+  it("lists metadata properties for a memo", async () => {
+    const memo: MemoryEntry = {
+      memoId: memoIdA,
+      namespace: "legacy/DEF/default",
+      content: "memo content",
+      metadata: { version: "2.0.0", tags: ["alpha", "beta"] },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      version: 5
+    };
+
+    const response = await handleInvocation(
+      {
+        tool: "memory.property.list",
+        params: {
+          namespace: "default",
+          memoId: memoIdA
+        }
+      },
+      envStub,
+      contextStub,
+      {
+        store: createStoreStub({
+          async getMetadataProperties(params) {
+            expect(params.ownerId).toBe(contextStub.ownerId);
+            expect(params.namespace).toBe("legacy/DEF/default");
+            expect(params.memoId).toBe(memoIdA);
+            return memo;
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    const json = (await response.json()) as MemoryPropertyListResponse;
+    expect(json.properties.length).toBe(2);
+  expect(JSON.stringify(json.properties[0])).toBe(JSON.stringify({ name: "tags", value: ["alpha", "beta"] }));
+  expect(JSON.stringify(json.properties[1])).toBe(JSON.stringify({ name: "version", value: "2.0.0" }));
+  expect(JSON.stringify(json.memo.metadata)).toBe(JSON.stringify(memo.metadata));
+    expect(json.rootNamespace).toBe(contextStub.rootNamespace);
   });
 
   it("lists memos with version ordering and pagination", async () => {

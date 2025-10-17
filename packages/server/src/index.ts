@@ -1,11 +1,13 @@
 import { parseEnv } from "./env";
 import { createMemoryStore } from "./db";
+import type { MetadataPropertyMutationResult } from "./db";
 import { generateEmbedding } from "./openai";
 import {
   deleteInputSchema,
   listNamespacesInputSchema,
   memoryPropertyInputSchema,
   memoryPropertyDeleteInputSchema,
+  memoryPropertyListInputSchema,
   memoryListInputSchema,
   namespaceRenameInputSchema,
   relationDeleteInputSchema,
@@ -29,6 +31,7 @@ import type {
   MemoryThinkSupportOutput,
   MemoryPropertyInput,
   MemoryPropertyDeleteInput,
+  MemoryPropertyListInput,
   MemoryListInput,
   TweetInput,
   TweetReactionOutput,
@@ -38,6 +41,9 @@ import type {
   MemoryDeleteResponse,
   MemoryListNamespacesResponse,
   MemoryPropertyResponse,
+  MemoryPropertyListResponse,
+  MemoryPropertyChange,
+  MemoryPropertySnapshot,
   MemoryListResponse,
   MemorySaveResponse,
   MemorySearchResponse,
@@ -74,6 +80,85 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== typeof b) return false;
+
+  if (a && b && typeof a === "object") {
+    if (Array.isArray(a)) {
+      if (!Array.isArray(b) || a.length !== (b as unknown[]).length) return false;
+      for (let index = 0; index < a.length; index += 1) {
+        if (!deepEqual(a[index], (b as unknown[])[index])) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    if (Array.isArray(b)) return false;
+
+    const keysA = Object.keys(a as Record<string, unknown>).sort();
+    const keysB = Object.keys(b as Record<string, unknown>).sort();
+    if (keysA.length !== keysB.length) return false;
+
+    for (let i = 0; i < keysA.length; i += 1) {
+      const key = keysA[i];
+      if (key !== keysB[i]) return false;
+      if (!deepEqual(
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key]
+      )) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  return false;
+}
+
+function buildPropertyChange(
+  name: string,
+  mutation: MetadataPropertyMutationResult
+): MemoryPropertyChange {
+  const previousExists = mutation.previousExists;
+  const currentExists = mutation.currentExists;
+  const valuesEqual = previousExists && currentExists
+    ? deepEqual(mutation.previousValue, mutation.currentValue)
+    : false;
+
+  let action: MemoryPropertyChange["action"];
+  if (!previousExists && currentExists) {
+    action = "created";
+  } else if (previousExists && !currentExists) {
+    action = "deleted";
+  } else if (previousExists && currentExists && !valuesEqual) {
+    action = "updated";
+  } else {
+    action = "noop";
+  }
+
+  const changed = action !== "noop";
+
+  const previousValue = previousExists ? mutation.previousValue ?? null : null;
+  const currentValue = currentExists ? mutation.currentValue ?? null : null;
+
+  return {
+    name,
+    value: currentValue,
+    previousValue,
+    action,
+    changed
+  } satisfies MemoryPropertyChange;
+}
+
+function snapshotProperties(metadata: Record<string, unknown> | undefined): MemoryPropertySnapshot[] {
+  const source = metadata ?? {};
+  return Object.keys(source)
+    .sort()
+    .map((key) => ({ name: key, value: source[key] ?? null } satisfies MemoryPropertySnapshot));
+}
+
 export async function handleInvocation(
   invocation: ToolInvocation,
   envVars: EnvVars,
@@ -104,7 +189,7 @@ export async function handleInvocation(
       );
     }
 
-    const updated = await store.setMetadataProperty({
+    const mutation = await store.setMetadataProperty({
       ownerId: context.ownerId,
       namespace: resolved.namespace,
       memoId: parsed.memoId,
@@ -112,16 +197,15 @@ export async function handleInvocation(
       value
     });
 
-    if (!updated) {
+    if (!mutation.memo) {
       return jsonResponse({ message: "Memo not found" }, 404);
     }
 
-    const propertyExists = Object.prototype.hasOwnProperty.call(updated.metadata, parsed.name);
-    const propertyValue = propertyExists ? updated.metadata[parsed.name] : null;
+    const property = buildPropertyChange(parsed.name, mutation);
 
     const payload: MemoryPropertyResponse = {
-      memo: updated,
-      property: { name: parsed.name, value: propertyValue },
+      memo: mutation.memo,
+      property,
       rootNamespace: context.rootNamespace
     };
 
@@ -276,6 +360,41 @@ export async function handleInvocation(
     case "memory.property.delete": {
       const parsed = memoryPropertyDeleteInputSchema.parse(invocation.params ?? {}) as MemoryPropertyDeleteInput;
       return mutateProperty(parsed, null);
+    }
+    case "memory.property.list": {
+      const parsed = memoryPropertyListInputSchema.parse(invocation.params ?? {}) as MemoryPropertyListInput;
+      let resolved: NamespaceResolution;
+      try {
+        resolved = resolveNamespace(context, {
+          namespace: parsed.namespace,
+          defaultOverride: options.defaultNamespaceOverride
+        });
+      } catch (error) {
+        return jsonResponse(
+          { message: "Invalid namespace", detail: (error as Error).message },
+          400
+        );
+      }
+
+      const memo = await store.getMetadataProperties({
+        ownerId: context.ownerId,
+        namespace: resolved.namespace,
+        memoId: parsed.memoId
+      });
+
+      if (!memo) {
+        return jsonResponse({ message: "Memo not found" }, 404);
+      }
+
+      const properties = snapshotProperties(memo.metadata);
+
+      const payload: MemoryPropertyListResponse = {
+        memo,
+        properties,
+        rootNamespace: context.rootNamespace
+      } satisfies MemoryPropertyListResponse;
+
+      return jsonResponse(payload, 200);
     }
     case "memory.list": {
       const parsed = memoryListInputSchema.parse(invocation.params ?? {}) as MemoryListInput;

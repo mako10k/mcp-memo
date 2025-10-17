@@ -8,7 +8,8 @@ import type {
   RelationGraphResult,
   SearchResult,
   NamespaceRenameResult,
-  MemoryListResult
+  MemoryListResult,
+  MetadataPropertyMutationResult
 } from "./db";
 import type {
   MemoryEntry,
@@ -17,6 +18,7 @@ import type {
   MemoryDeleteResponse,
   MemoryListNamespacesResponse,
   MemoryPropertyResponse,
+  MemoryPropertyListResponse,
   MemoryListResponse,
   MemoryNamespaceRenameResponse,
   RelationSaveResponse,
@@ -126,18 +128,32 @@ class InMemoryStore implements MemoryStore {
     return memo;
   }
 
-  async setMetadataProperty(params: Parameters<MemoryStore["setMetadataProperty"]>[0]): Promise<MemoryEntry | null> {
+  async setMetadataProperty(
+    params: Parameters<MemoryStore["setMetadataProperty"]>[0]
+  ): Promise<MetadataPropertyMutationResult> {
     const memo = this.memos.get(params.memoId);
     if (!memo || memo.namespace !== params.namespace) {
-      return null;
+      return {
+        memo: null,
+        previousValue: undefined,
+        currentValue: undefined,
+        previousExists: false,
+        currentExists: false
+      } satisfies MetadataPropertyMutationResult;
     }
 
     const metadata = { ...memo.metadata } as Record<string, unknown>;
+    const previousExists = Object.prototype.hasOwnProperty.call(metadata, params.name);
+    const previousValue = previousExists ? metadata[params.name] : undefined;
+
     if (params.value === null) {
       delete metadata[params.name];
     } else {
       metadata[params.name] = params.value;
     }
+
+    const currentExists = params.value !== null;
+    const currentValue = params.value === null ? undefined : params.value;
 
     const updated: MemoryEntry = {
       ...memo,
@@ -147,7 +163,23 @@ class InMemoryStore implements MemoryStore {
     };
 
     this.memos.set(params.memoId, updated);
-    return updated;
+    return {
+      memo: updated,
+      previousValue,
+      currentValue,
+      previousExists,
+      currentExists
+    } satisfies MetadataPropertyMutationResult;
+  }
+
+  async getMetadataProperties(
+    params: Parameters<MemoryStore["getMetadataProperties"]>[0]
+  ): Promise<MemoryEntry | null> {
+    const memo = this.memos.get(params.memoId);
+    if (!memo || memo.namespace !== params.namespace) {
+      return null;
+    }
+    return memo;
   }
 
   async list(params: Parameters<MemoryStore["list"]>[0]): Promise<MemoryListResult> {
@@ -423,6 +455,9 @@ describe("memory MCP smoke", () => {
     const propertyJsonA = (await propertyResponseA.json()) as MemoryPropertyResponse;
     expect(propertyJsonA.memo.metadata.version).toBe("1.0.0");
     expect(propertyJsonA.property.value).toBe(propertyJsonA.memo.metadata.version);
+  expect(propertyJsonA.property.previousValue).toBe(null);
+  expect(propertyJsonA.property.action).toBe("created");
+  expect(propertyJsonA.property.changed).toBe(true);
 
     const propertyResponseB = await handleInvocation(
       {
@@ -439,6 +474,28 @@ describe("memory MCP smoke", () => {
     expect(propertyResponseB.status).toBe(200);
     const propertyJsonB = (await propertyResponseB.json()) as MemoryPropertyResponse;
     expect(propertyJsonB.property.value).toBe("2.0.0");
+    expect(propertyJsonB.property.previousValue).toBe(null);
+    expect(propertyJsonB.property.action).toBe("created");
+    expect(propertyJsonB.property.changed).toBe(true);
+
+    const propertyListResponse = await handleInvocation(
+      {
+        tool: "memory.property.list",
+        params: { namespace: "notes", memoId: memoIdB }
+      },
+      envStub,
+      contextStub,
+      {
+        store,
+        embed: async () => makeVector(0.033)
+      }
+    );
+
+    expect(propertyListResponse.status).toBe(200);
+    const propertyListJson = (await propertyListResponse.json()) as MemoryPropertyListResponse;
+    expect(JSON.stringify(propertyListJson.properties)).toBe(JSON.stringify([
+      { name: "version", value: "2.0.0" }
+    ]));
 
     // List memos with version ordering and pagination
     const listResponsePage1 = await handleInvocation(
@@ -501,6 +558,9 @@ describe("memory MCP smoke", () => {
     expect(propertyDeleteResponse.status).toBe(200);
     const propertyDeleteJson = (await propertyDeleteResponse.json()) as MemoryPropertyResponse;
     expect(propertyDeleteJson.property.value).toBe(null);
+  expect(propertyDeleteJson.property.previousValue).toBe("2.0.0");
+  expect(propertyDeleteJson.property.action).toBe("deleted");
+  expect(propertyDeleteJson.property.changed).toBe(true);
     expect(Object.prototype.hasOwnProperty.call(propertyDeleteJson.memo.metadata, "version")).toBe(false);
 
     // Search namespace

@@ -6,6 +6,7 @@ import {
   listNamespacesInputSchema,
   memoryPropertyInputSchema,
   memoryPropertyDeleteInputSchema,
+  memoryPropertyListInputSchema,
   memoryListInputSchema,
   namespaceRenameInputSchema,
   relationDeleteInputSchema,
@@ -47,6 +48,8 @@ import {
   type MemoryThinkSupportOutput,
   type MemoryPropertyInput,
   type MemoryPropertyDeleteInput,
+  type MemoryPropertyListInput,
+  type MemoryPropertyListResponse,
   type MemoryListInput,
   type NamespaceRenameInput,
   type TweetInput,
@@ -339,6 +342,29 @@ async function registerTools(bridge: MemoryHttpBridge, server: McpServer): Promi
     const payload = {
       status: "ok",
       property: result.property,
+      memo: memoToPayload(result.memo, result.rootNamespace)
+    };
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(payload)
+        }
+      ]
+    };
+  });
+
+  server.registerTool("memory-property-list", {
+    title: "List memo metadata properties",
+    description: "Retrieve all metadata properties for a memo within the specified namespace.",
+    inputSchema: memoryPropertyListInputSchema.shape
+  }, async (args: unknown) => {
+    const parsed = memoryPropertyListInputSchema.parse(args) as MemoryPropertyListInput;
+    const result = await bridge.invoke<MemoryPropertyListResponse>("memory.property.list", parsed);
+    const payload = {
+      status: "ok",
+      properties: result.properties,
       memo: memoToPayload(result.memo, result.rootNamespace)
     };
 

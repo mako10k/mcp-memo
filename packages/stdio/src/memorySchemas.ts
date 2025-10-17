@@ -254,6 +254,11 @@ export const memoryPropertyDeleteInputSchema = z.object({
   name: z.string().min(1)
 });
 
+export const memoryPropertyListInputSchema = z.object({
+  namespace: z.string().min(1).optional(),
+  memoId: z.string().uuid()
+});
+
 export const memoryListInputSchema = z.object({
   namespace: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -381,7 +386,8 @@ export const toolInvocationSchema = z.object({
     "memory.delete",
     "memory.list_namespaces",
     "memory.property",
-  "memory.property.delete",
+    "memory.property.delete",
+    "memory.property.list",
     "memory.list",
     "memory.relation.save",
     "memory.relation.delete",
@@ -415,6 +421,13 @@ export type MemoryThinkSupportConvergenceOutput = z.infer<typeof memoryThinkSupp
 export type MemoryThinkSupportOutput = z.infer<typeof memoryThinkSupportOutputSchema>;
 export type MemoryPropertyInput = z.infer<typeof memoryPropertyInputSchema>;
 export type MemoryPropertyDeleteInput = z.infer<typeof memoryPropertyDeleteInputSchema>;
+export type MemoryPropertyListInput = z.infer<typeof memoryPropertyListInputSchema>;
+export type {
+  MemoryPropertyLifecycleAction,
+  MemoryPropertySnapshot,
+  MemoryPropertyChange,
+  MemoryPropertyListResponse
+} from "@mcp/shared";
 export type MemoryListInput = z.infer<typeof memoryListInputSchema>;
 export type NamespaceRenameInput = z.infer<typeof namespaceRenameInputSchema>;
 export type TweetInput = z.infer<typeof tweetInputSchema>;

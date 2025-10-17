@@ -9,7 +9,10 @@
     "types": ["node"],
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@mcp/shared": ["../shared/src"]
+    }
   },
   "include": ["src/**/*"]
 }

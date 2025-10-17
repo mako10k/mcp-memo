@@ -5,6 +5,8 @@
 - update: 既存プロパティの値更新（同上）
 - delete: プロパティ削除（value=null または専用delete API）
 - list: プロパティ一覧取得（namespace, memoId単位）
+- レスポンス: `memory.property`/`memory.property.delete` は `action`（created/updated/deleted/noop）、`previousValue`、`changed` フラグを含む詳細な変更メタデータを返す
+- `memory.property.list` はアルファベット順にソートしたスナップショット一覧を返し、メモの最新状態も同梱
 
 ## 2. ライフサイクルイベント通知/監視
 - 各CRUD操作時にイベント発火（created, updated, deleted）

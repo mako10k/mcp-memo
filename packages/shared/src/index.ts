@@ -42,12 +42,28 @@ export interface MemoryListNamespacesResponse {
   namespaces: string[];
 }
 
+export type MemoryPropertyLifecycleAction = "created" | "updated" | "deleted" | "noop";
+
+export interface MemoryPropertySnapshot {
+  name: string;
+  value: unknown;
+}
+
+export interface MemoryPropertyChange extends MemoryPropertySnapshot {
+  previousValue: unknown;
+  action: MemoryPropertyLifecycleAction;
+  changed: boolean;
+}
+
 export interface MemoryPropertyResponse {
   memo: MemoryEntry;
-  property: {
-    name: string;
-    value: unknown;
-  };
+  property: MemoryPropertyChange;
+  rootNamespace: string;
+}
+
+export interface MemoryPropertyListResponse {
+  memo: MemoryEntry;
+  properties: MemoryPropertySnapshot[];
   rootNamespace: string;
 }
 
